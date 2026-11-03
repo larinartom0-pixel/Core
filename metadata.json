@@ -1,0 +1,6 @@
+{
+  "name": "Core Sector",
+  "description": "Factory building and logistic automation game inspired by Mindustry, with drill mining, conveyors, builder drones, and base core management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
