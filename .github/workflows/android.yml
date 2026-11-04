@@ -28,6 +28,20 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Ensure Keystores and Environment exist
+        run: |
+          touch .env
+          if [ ! -f "debug.keystore" ]; then
+            echo "Creating debug.keystore for CI..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f "my-upload-key.jks" ]; then
+            echo "Creating my-upload-key.jks for CI..."
+            keytool -genkey -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass "CoreSector2026!" -keypass "CoreSector2026!" -dname "CN=CoreSector, OU=Games, O=Factory, L=Kyiv, ST=Kyiv, C=UA"
+          fi
+          cp -f my-upload-key.jks app/my-upload-key.jks 2>/dev/null || true
+          cp -f debug.keystore app/debug.keystore 2>/dev/null || true
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
@@ -36,15 +50,11 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'CoreSector2026!' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'CoreSector2026!' }}
-        run: |
-          if [ -f "my-upload-key.jks" ]; then
-            ./gradlew assembleRelease --stacktrace
-          else
-            echo "Release keystore not found in repository, skipping release build."
-          fi
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: CoreSector-APKs
           path: |
