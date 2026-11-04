@@ -173,6 +173,86 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testMarkedBuildingContinuesWorkingAndItemsPreserved() {
+        val world = GameWorld(40, 40)
+        val convX = 12
+        val convY = 12
+
+        // Place a conveyor
+        world.toggleBlueprint(convX, convY, BuildingType.CONVEYOR, Direction.EAST)
+        world.confirmBlueprints()
+        val conv = world.buildings.first { it.originX == convX && it.originY == convY }
+        conv.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        // Put an item on it
+        world.items.add(
+            com.example.model.TransportedItem(
+                id = "item_1",
+                resource = Resource.COPPER,
+                tileX = convX,
+                tileY = convY,
+                progress = 0.2f,
+                direction = Direction.EAST
+            )
+        )
+
+        // Mark conveyor for deconstruction (e.g. selected with trash tool)
+        world.toggleMarkForDeconstruction(convX, convY)
+        assertTrue("Conveyor is marked for deconstruction", conv.isMarkedForDeconstruction)
+        assertTrue("Conveyor is still fully built and operational", conv.isFullyBuilt)
+
+        // Update world a few ticks
+        world.update(0.1f)
+
+        // The item must NOT have disappeared!
+        assertEquals("Item must still exist on conveyor", 1, world.items.size)
+        assertTrue("Item progress must have advanced", world.items[0].progress > 0.2f)
+    }
+
+    @Test
+    fun testDeconstructionItemRefund() {
+        val world = GameWorld(40, 40)
+        val convX = 14
+        val convY = 14
+
+        // Place a conveyor
+        world.toggleBlueprint(convX, convY, BuildingType.CONVEYOR, Direction.EAST)
+        world.confirmBlueprints()
+        val conv = world.buildings.first { it.originX == convX && it.originY == convY }
+        conv.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        val copperBefore = world.coreResources[Resource.COPPER] ?: 0
+
+        // Put an item on the conveyor
+        world.items.add(
+            com.example.model.TransportedItem(
+                id = "item_refund",
+                resource = Resource.COPPER,
+                tileX = convX,
+                tileY = convY,
+                progress = 0.5f,
+                direction = Direction.EAST
+            )
+        )
+
+        // Mark and confirm deconstruct
+        world.toggleMarkForDeconstruction(convX, convY)
+        world.confirmDeconstruction()
+
+        // Run until deconstruction is finished
+        for (i in 0 until 120) {
+            world.update(0.05f)
+        }
+
+        // Conveyor should be gone, and BOTH building cost (1 Cu) AND item on conveyor (1 Cu) should be refunded!
+        val copperAfter = world.coreResources[Resource.COPPER] ?: 0
+        assertEquals("Should refund building cost (1) + item (1) = +2 Cu", copperBefore + 2, copperAfter)
+        assertEquals("Items list should be empty", 0, world.items.size)
+    }
+
+    @Test
     fun testDrillMiningRate() {
         val world = GameWorld(40, 40)
         val drillX = 5

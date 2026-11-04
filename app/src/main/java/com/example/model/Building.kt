@@ -87,7 +87,7 @@ data class BuildingInstance(
     var routerOutputIndex: Int = 0,
     var storedResources: MutableMap<Resource, Int> = mutableMapOf()
 ) {
-    val isFullyBuilt: Boolean get() = buildProgress >= 0.999f && !isMarkedForDeconstruction
+    val isFullyBuilt: Boolean get() = buildProgress >= 0.999f
 
     fun occupies(checkX: Int, checkY: Int): Boolean {
         return type.occupies(originX, originY, checkX, checkY)

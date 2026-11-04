@@ -26,6 +26,12 @@ fun GameScreen(
 
     // Subscribe to state flows
     val tick by viewModel.tickState.collectAsStateWithLifecycle()
+    val coreResources by viewModel.coreResources.collectAsStateWithLifecycle()
+    val blueprintsCount by viewModel.blueprintsCount.collectAsStateWithLifecycle()
+    val blueprintsCopperCost by viewModel.blueprintsCopperCost.collectAsStateWithLifecycle()
+    val blueprintsSilverCost by viewModel.blueprintsSilverCost.collectAsStateWithLifecycle()
+    val markedForDemolishCount by viewModel.markedForDemolishCount.collectAsStateWithLifecycle()
+    val droneState by viewModel.droneState.collectAsStateWithLifecycle()
     val selectedTool by viewModel.selectedTool.collectAsStateWithLifecycle()
     val conveyorDirection by viewModel.conveyorDirection.collectAsStateWithLifecycle()
     val isDemolishMode by viewModel.isDemolishMode.collectAsStateWithLifecycle()
@@ -37,10 +43,6 @@ fun GameScreen(
     var screenHeight by remember { mutableFloatStateOf(2160f) }
 
     val world = viewModel.world
-    val blueprintsCount = world.blueprints.size
-    val blueprintsCopperCost = world.getTotalBlueprintCopperCost()
-    val blueprintsSilverCost = world.getTotalBlueprintSilverCost()
-    val markedForDemolishCount = world.getMarkedForDeconstructionCount()
 
     Box(
         modifier = modifier
@@ -84,8 +86,8 @@ fun GameScreen(
 
         // Render HUD
         GameHud(
-            coreResources = world.coreResources,
-            droneState = world.drone.state,
+            coreResources = coreResources,
+            droneState = droneState,
             blueprintsCount = blueprintsCount,
             blueprintsCopperCost = blueprintsCopperCost,
             blueprintsSilverCost = blueprintsSilverCost,

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.game.GameWorld
 import com.example.model.BuildingType
 import com.example.model.Direction
+import com.example.model.DroneState
 import com.example.model.Resource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,6 +34,25 @@ class GameViewModel : ViewModel() {
     // State trigger to notify Compose of frame updates
     private val _tickState = MutableStateFlow(0L)
     val tickState = _tickState.asStateFlow()
+
+    // Reactive HUD States: will trigger Compose recomposition in real time
+    private val _coreResources = MutableStateFlow<Map<Resource, Int>>(_world.coreResources.toMap())
+    val coreResources = _coreResources.asStateFlow()
+
+    private val _blueprintsCount = MutableStateFlow(0)
+    val blueprintsCount = _blueprintsCount.asStateFlow()
+
+    private val _blueprintsCopperCost = MutableStateFlow(0)
+    val blueprintsCopperCost = _blueprintsCopperCost.asStateFlow()
+
+    private val _blueprintsSilverCost = MutableStateFlow(0)
+    val blueprintsSilverCost = _blueprintsSilverCost.asStateFlow()
+
+    private val _markedForDemolishCount = MutableStateFlow(0)
+    val markedForDemolishCount = _markedForDemolishCount.asStateFlow()
+
+    private val _droneState = MutableStateFlow(DroneState.IDLE_AT_CORE)
+    val droneState = _droneState.asStateFlow()
 
     // Camera (Reactive Compose States)
     var cameraOffsetX by mutableFloatStateOf(0f)
@@ -70,6 +90,7 @@ class GameViewModel : ViewModel() {
 
     init {
         centerOnCore(1080f, 2160f)
+        syncHudState()
     }
 
     fun startNewGame() {
@@ -77,6 +98,7 @@ class GameViewModel : ViewModel() {
         _selectedTool.value = null
         _isDemolishMode.value = false
         _conveyorDirection.value = Direction.EAST
+        syncHudState()
         centerOnCore(1080f, 2160f)
         _currentScreen.value = AppScreen.IN_GAME
         startGameLoop()
@@ -85,6 +107,15 @@ class GameViewModel : ViewModel() {
     fun exitToMainMenu() {
         _currentScreen.value = AppScreen.MAIN_MENU
         gameLoopJob?.cancel()
+    }
+
+    fun syncHudState() {
+        _coreResources.value = _world.coreResources.toMap()
+        _blueprintsCount.value = _world.blueprints.size
+        _blueprintsCopperCost.value = _world.getTotalBlueprintCopperCost()
+        _blueprintsSilverCost.value = _world.getTotalBlueprintSilverCost()
+        _markedForDemolishCount.value = _world.getMarkedForDeconstructionCount()
+        _droneState.value = _world.drone.state
     }
 
     private fun startGameLoop() {
@@ -98,6 +129,23 @@ class GameViewModel : ViewModel() {
 
                 _world.update(dt)
                 _tickState.value = now
+
+                // Check and update reactive HUD flows
+                if (_coreResources.value != _world.coreResources) {
+                    _coreResources.value = _world.coreResources.toMap()
+                }
+                if (_blueprintsCount.value != _world.blueprints.size) {
+                    _blueprintsCount.value = _world.blueprints.size
+                    _blueprintsCopperCost.value = _world.getTotalBlueprintCopperCost()
+                    _blueprintsSilverCost.value = _world.getTotalBlueprintSilverCost()
+                }
+                val demCount = _world.getMarkedForDeconstructionCount()
+                if (_markedForDemolishCount.value != demCount) {
+                    _markedForDemolishCount.value = demCount
+                }
+                if (_droneState.value != _world.drone.state) {
+                    _droneState.value = _world.drone.state
+                }
 
                 delay(16L) // ~60 FPS
             }
@@ -168,36 +216,44 @@ class GameViewModel : ViewModel() {
     fun onTapTile(tileX: Int, tileY: Int) {
         if (_isDemolishMode.value) {
             _world.toggleMarkForDeconstruction(tileX, tileY)
+            syncHudState()
             return
         }
         val tool = _selectedTool.value ?: return
         _world.toggleBlueprint(tileX, tileY, tool, _conveyorDirection.value)
+        syncHudState()
     }
 
     fun onDragConveyorSegment(tileX: Int, tileY: Int, direction: Direction) {
         if (_selectedTool.value == BuildingType.CONVEYOR) {
             _world.addConveyorAt(tileX, tileY, direction)
+            syncHudState()
         }
     }
 
     fun onDemolishAreaSelected(x1: Int, y1: Int, x2: Int, y2: Int) {
         _world.markAreaForDeconstruction(x1, y1, x2, y2)
+        syncHudState()
     }
 
     fun confirmBlueprints() {
         _world.confirmBlueprints()
+        syncHudState()
     }
 
     fun cancelBlueprints() {
         _world.cancelBlueprints()
+        syncHudState()
     }
 
     fun confirmDemolish() {
         _world.confirmDeconstruction()
+        syncHudState()
     }
 
     fun cancelDemolish() {
         _world.cancelDeconstruction()
+        syncHudState()
     }
 
     fun toggleGrid(enabled: Boolean) {

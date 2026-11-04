@@ -394,10 +394,14 @@ class GameWorld(
                         coreResources[Resource.SILVER] = (coreResources[Resource.SILVER] ?: 0) + agRefund
                     }
 
-                    addFloatingText("+$cuRefund Cu" + if (agRefund > 0) " +$agRefund Ag" else "", tx, ty - 0.5f, Color(0xFF10B981))
+                    // Refund any items that were still located on this building directly into the Core!
+                    val itemsOnBuilding = items.filter { deconstructBuilding.occupies(it.tileX, it.tileY) }
+                    for (item in itemsOnBuilding) {
+                        coreResources[item.resource] = (coreResources[item.resource] ?: 0) + 1
+                        addFloatingText("+1 ${item.resource.displayName}", item.tileX + 0.5f, item.tileY + 0.5f, item.resource.color)
+                    }
+                    items.removeAll(itemsOnBuilding)
 
-                    // Remove building and any items on its footprint
-                    items.removeAll { deconstructBuilding.occupies(it.tileX, it.tileY) }
                     buildings.remove(deconstructBuilding)
                     deconstructionQueue.remove(deconstructBuilding.id)
                     drone.isFiringLaser = false
