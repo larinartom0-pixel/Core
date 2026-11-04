@@ -3,8 +3,8 @@ package com.example.ui
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -16,9 +16,6 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import com.example.game.GameWorld
@@ -35,23 +32,31 @@ fun GameCanvas(
     showGridLines: Boolean,
     showFlowArrows: Boolean,
     selectedTool: BuildingType?,
+    isDemolishMode: Boolean,
+    demolishDragStart: Pair<Int, Int>?,
+    demolishDragCurrent: Pair<Int, Int>?,
     conveyorDirection: Direction,
     onTapTile: (Int, Int) -> Unit,
     onDragConveyorSegment: (Int, Int, Direction) -> Unit,
     onPanCamera: (Float, Float) -> Unit,
+    onUpdateDemolishDrag: (Pair<Int, Int>?, Pair<Int, Int>?) -> Unit,
+    onDemolishAreaSelected: (Int, Int, Int, Int) -> Unit,
+    onZoomCentered: (Float, Float, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val baseTileSize = 48f
 
-    // Updated states so pointerInput(Unit) stays alive continuously without cancellation
     val currentCameraOffsetX by rememberUpdatedState(cameraOffsetX)
     val currentCameraOffsetY by rememberUpdatedState(cameraOffsetY)
     val currentZoom by rememberUpdatedState(zoom)
     val currentTool by rememberUpdatedState(selectedTool)
-    val currentDir by rememberUpdatedState(conveyorDirection)
+    val currentDemolishMode by rememberUpdatedState(isDemolishMode)
     val onPanState by rememberUpdatedState(onPanCamera)
     val onTapState by rememberUpdatedState(onTapTile)
     val onDragConveyorState by rememberUpdatedState(onDragConveyorSegment)
+    val onUpdateDemolishDragState by rememberUpdatedState(onUpdateDemolishDrag)
+    val onDemolishAreaSelectedState by rememberUpdatedState(onDemolishAreaSelected)
+    val onZoomCenteredState by rememberUpdatedState(onZoomCentered)
 
     val nativeTextPaint = remember {
         Paint().apply {
@@ -76,8 +81,31 @@ fun GameCanvas(
                     var lastTileX = -1
                     var lastTileY = -1
 
+                    var localDemolishStart: Pair<Int, Int>? = null
+                    var prevPinchDist = -1f
+
                     while (true) {
                         val event = awaitPointerEvent()
+                        val activePointers = event.changes.filter { !it.isConsumed }
+
+                        // Multitouch pinch-to-zoom support
+                        if (event.changes.size >= 2) {
+                            val p1 = event.changes[0].position
+                            val p2 = event.changes[1].position
+                            val currentDist = hypot(p1.x - p2.x, p1.y - p2.y)
+                            val centerPinch = Offset((p1.x + p2.x) / 2f, (p1.y + p2.y) / 2f)
+
+                            if (prevPinchDist > 0f && currentDist > 10f) {
+                                val scaleFactor = currentDist / prevPinchDist
+                                onZoomCenteredState(currentZoom * scaleFactor, centerPinch.x, centerPinch.y)
+                            }
+                            prevPinchDist = currentDist
+                            event.changes.forEach { it.consume() }
+                            continue
+                        } else {
+                            prevPinchDist = -1f
+                        }
+
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
 
                         if (change.changedToUp()) {
@@ -91,6 +119,20 @@ fun GameCanvas(
                                 if (tileX in 0 until world.width && tileY in 0 until world.height) {
                                     onTapState(tileX, tileY)
                                 }
+                            } else if (isDrag && currentDemolishMode && localDemolishStart != null) {
+                                val curTileSize = baseTileSize * currentZoom
+                                val worldX = (change.position.x - currentCameraOffsetX) / curTileSize
+                                val worldY = (change.position.y - currentCameraOffsetY) / curTileSize
+                                val endTileX = floor(worldX).toInt()
+                                val endTileY = floor(worldY).toInt()
+
+                                onDemolishAreaSelectedState(
+                                    localDemolishStart!!.first,
+                                    localDemolishStart!!.second,
+                                    endTileX,
+                                    endTileY
+                                )
+                                onUpdateDemolishDragState(null, null)
                             }
                             break
                         }
@@ -102,24 +144,29 @@ fun GameCanvas(
 
                         if (!isDrag && totalDragDist >= touchSlop) {
                             isDrag = true
-                            if (currentTool == BuildingType.CONVEYOR) {
-                                val curTileSize = baseTileSize * currentZoom
-                                val worldX = (startPos.x - currentCameraOffsetX) / curTileSize
-                                val worldY = (startPos.y - currentCameraOffsetY) / curTileSize
-                                lastTileX = floor(worldX).toInt()
-                                lastTileY = floor(worldY).toInt()
+                            val curTileSize = baseTileSize * currentZoom
+                            val worldX = (startPos.x - currentCameraOffsetX) / curTileSize
+                            val worldY = (startPos.y - currentCameraOffsetY) / curTileSize
+                            lastTileX = floor(worldX).toInt()
+                            lastTileY = floor(worldY).toInt()
+
+                            if (currentDemolishMode) {
+                                localDemolishStart = Pair(lastTileX, lastTileY)
+                                onUpdateDemolishDragState(localDemolishStart, localDemolishStart)
                             }
                         }
 
                         if (isDrag) {
                             change.consume()
-                            if (currentTool == BuildingType.CONVEYOR) {
-                                val curTileSize = baseTileSize * currentZoom
-                                val worldX = (currentPos.x - currentCameraOffsetX) / curTileSize
-                                val worldY = (currentPos.y - currentCameraOffsetY) / curTileSize
-                                val currTileX = floor(worldX).toInt()
-                                val currTileY = floor(worldY).toInt()
+                            val curTileSize = baseTileSize * currentZoom
+                            val worldX = (currentPos.x - currentCameraOffsetX) / curTileSize
+                            val worldY = (currentPos.y - currentCameraOffsetY) / curTileSize
+                            val currTileX = floor(worldX).toInt()
+                            val currTileY = floor(worldY).toInt()
 
+                            if (currentDemolishMode && localDemolishStart != null) {
+                                onUpdateDemolishDragState(localDemolishStart, Pair(currTileX, currTileY))
+                            } else if (currentTool == BuildingType.CONVEYOR) {
                                 if (lastTileX != -1 && (currTileX != lastTileX || currTileY != lastTileY)) {
                                     val deltaTileX = currTileX - lastTileX
                                     val deltaTileY = currTileY - lastTileY
@@ -139,13 +186,11 @@ fun GameCanvas(
                 }
             }
     ) {
-        // Read tick to guarantee redraw on frame update without recreating the Canvas composable
         val frameTick = tick
         val currentTileSize = baseTileSize * zoom
         val viewW = size.width
         val viewH = size.height
 
-        // Calculate visible tile range (culling)
         val minX = max(0, floor(-cameraOffsetX / currentTileSize).toInt())
         val maxX = min(world.width - 1, ceil((viewW - cameraOffsetX) / currentTileSize).toInt())
         val minY = max(0, floor(-cameraOffsetY / currentTileSize).toInt())
@@ -164,10 +209,18 @@ fun GameCanvas(
                     size = Size(currentTileSize, currentTileSize)
                 )
 
-                // Ore or rock details
                 when (tile.type) {
                     TileType.COPPER_ORE -> {
                         drawCopperOreAccents(screenX, screenY, currentTileSize, tile.variant)
+                    }
+                    TileType.LEAD_ORE -> {
+                        drawLeadOreAccents(screenX, screenY, currentTileSize, tile.variant)
+                    }
+                    TileType.COAL_ORE -> {
+                        drawCoalAccents(screenX, screenY, currentTileSize, tile.variant)
+                    }
+                    TileType.SILVER_ORE -> {
+                        drawSilverOreAccents(screenX, screenY, currentTileSize, tile.variant)
                     }
                     TileType.SCRAP_DEPOSIT -> {
                         drawScrapAccents(screenX, screenY, currentTileSize, tile.variant)
@@ -179,7 +232,6 @@ fun GameCanvas(
                         drawRockWall(screenX, screenY, currentTileSize)
                     }
                     TileType.DIRT -> {
-                        // Subtle gravel texture
                         drawCircle(
                             color = tile.type.accentColor,
                             radius = currentTileSize * 0.08f,
@@ -188,7 +240,6 @@ fun GameCanvas(
                     }
                 }
 
-                // Grid lines if enabled
                 if (showGridLines) {
                     drawRect(
                         color = Color(0x15FFFFFF),
@@ -214,13 +265,19 @@ fun GameCanvas(
                 BuildingType.CONVEYOR -> {
                     drawConveyorBelt(screenX, screenY, currentTileSize, b.direction, showFlowArrows, isGhost = false)
                 }
+                BuildingType.ROUTER -> {
+                    drawRouter(screenX, screenY, currentTileSize, isGhost = false)
+                }
+                BuildingType.JUNCTION -> {
+                    drawJunction(screenX, screenY, currentTileSize, isGhost = false)
+                }
                 BuildingType.COPPER_DRILL -> {
                     drawCopperDrill(screenX, screenY, bWidthPx, bHeightPx, b.drillRotation, b.buildProgress)
                 }
             }
 
             // Construction progress bar if under construction
-            if (!b.isFullyBuilt) {
+            if (!b.isFullyBuilt && !b.isMarkedForDeconstruction) {
                 drawProgressBar(
                     screenX = screenX,
                     screenY = screenY - 14f * zoom,
@@ -229,6 +286,32 @@ fun GameCanvas(
                     progress = b.buildProgress,
                     color = Color(0xFF38BDF8)
                 )
+            }
+
+            // Deconstruction overlay / progress bar
+            if (b.isMarkedForDeconstruction) {
+                drawRect(
+                    color = Color(0x55EF4444),
+                    topLeft = Offset(screenX, screenY),
+                    size = Size(bWidthPx, bHeightPx)
+                )
+                drawRect(
+                    color = Color(0xFFEF4444),
+                    topLeft = Offset(screenX, screenY),
+                    size = Size(bWidthPx, bHeightPx),
+                    style = Stroke(width = 2.5f * zoom)
+                )
+
+                if (b.deconstructProgress > 0f) {
+                    drawProgressBar(
+                        screenX = screenX,
+                        screenY = screenY - 14f * zoom,
+                        width = bWidthPx,
+                        height = 8f * zoom,
+                        progress = b.deconstructProgress,
+                        color = Color(0xFFEF4444)
+                    )
+                }
             }
         }
 
@@ -243,15 +326,18 @@ fun GameCanvas(
                 BuildingType.CONVEYOR -> {
                     drawConveyorBelt(screenX, screenY, currentTileSize, bp.direction, showFlowArrows, isGhost = true)
                 }
+                BuildingType.ROUTER -> {
+                    drawRouter(screenX, screenY, currentTileSize, isGhost = true)
+                }
+                BuildingType.JUNCTION -> {
+                    drawJunction(screenX, screenY, currentTileSize, isGhost = true)
+                }
                 BuildingType.COPPER_DRILL -> {
                     drawCopperDrillGhost(screenX, screenY, bWidthPx, bHeightPx)
                 }
-                BuildingType.CORE -> {
-                    // Not placed via player menu
-                }
+                BuildingType.CORE -> {}
             }
 
-            // Blueprint holographic border
             drawRect(
                 color = Color(0x9938BDF8),
                 topLeft = Offset(screenX, screenY),
@@ -260,7 +346,7 @@ fun GameCanvas(
             )
         }
 
-        // 4. Draw Items on Conveyors
+        // 4. Draw Items on Conveyors / Routers / Junctions
         for (item in world.items) {
             val fromX = cameraOffsetX + (item.tileX + 0.5f) * currentTileSize
             val fromY = cameraOffsetY + (item.tileY + 0.5f) * currentTileSize
@@ -270,10 +356,35 @@ fun GameCanvas(
             drawTransportedItem(itemScreenX, itemScreenY, currentTileSize * 0.28f, item.resource)
         }
 
-        // 5. Draw Builder Drone and Construction Laser
+        // 5. Draw Demolish Area Drag Box
+        if (demolishDragStart != null && demolishDragCurrent != null) {
+            val sX = min(demolishDragStart.first, demolishDragCurrent.first)
+            val eX = max(demolishDragStart.first, demolishDragCurrent.first)
+            val sY = min(demolishDragStart.second, demolishDragCurrent.second)
+            val eY = max(demolishDragStart.second, demolishDragCurrent.second)
+
+            val boxScreenX = cameraOffsetX + sX * currentTileSize
+            val boxScreenY = cameraOffsetY + sY * currentTileSize
+            val boxWidth = (eX - sX + 1) * currentTileSize
+            val boxHeight = (eY - sY + 1) * currentTileSize
+
+            drawRect(
+                color = Color(0x44EF4444),
+                topLeft = Offset(boxScreenX, boxScreenY),
+                size = Size(boxWidth, boxHeight)
+            )
+            drawRect(
+                color = Color(0xFFEF4444),
+                topLeft = Offset(boxScreenX, boxScreenY),
+                size = Size(boxWidth, boxHeight),
+                style = Stroke(width = 2f * zoom)
+            )
+        }
+
+        // 6. Draw Builder Drone and Laser
         drawBuilderDroneAndLaser(world.drone, cameraOffsetX, cameraOffsetY, currentTileSize, zoom)
 
-        // 6. Draw Sparks
+        // 7. Draw Sparks
         for (spark in world.sparks) {
             val sx = cameraOffsetX + spark.x * currentTileSize
             val sy = cameraOffsetY + spark.y * currentTileSize
@@ -284,7 +395,7 @@ fun GameCanvas(
             )
         }
 
-        // 7. Draw Floating Texts
+        // 8. Draw Floating Texts
         drawIntoCanvas { canvas ->
             for (txt in world.floatingTexts) {
                 val sx = cameraOffsetX + txt.x * currentTileSize
@@ -319,6 +430,48 @@ private fun DrawScope.drawCopperOreAccents(x: Float, y: Float, size: Float, vari
     }
 }
 
+private fun DrawScope.drawLeadOreAccents(x: Float, y: Float, size: Float, variant: Int) {
+    val purple = Color(0xFF8B5CF6)
+    val violetLight = Color(0xFFA78BFA)
+    val darkViolet = Color(0xFF5B21B6)
+
+    val c1 = Offset(x + size * 0.38f, y + size * 0.38f)
+    val c2 = Offset(x + size * 0.68f, y + size * 0.62f)
+
+    drawCircle(darkViolet, size * 0.24f, c1)
+    drawCircle(purple, size * 0.18f, c1)
+    drawCircle(violetLight, size * 0.08f, Offset(c1.x - size * 0.04f, c1.y - size * 0.04f))
+
+    drawCircle(darkViolet, size * 0.19f, c2)
+    drawCircle(purple, size * 0.14f, c2)
+}
+
+private fun DrawScope.drawCoalAccents(x: Float, y: Float, size: Float, variant: Int) {
+    val coalDark = Color(0xFF0F172A)
+    val coalMid = Color(0xFF334155)
+    val coalHighlight = Color(0xFF64748B)
+
+    drawRect(coalDark, Offset(x + size * 0.25f, y + size * 0.25f), Size(size * 0.5f, size * 0.5f))
+    drawRect(coalMid, Offset(x + size * 0.32f, y + size * 0.32f), Size(size * 0.36f, size * 0.36f))
+    drawCircle(coalHighlight, size * 0.08f, Offset(x + size * 0.42f, y + size * 0.42f))
+}
+
+private fun DrawScope.drawSilverOreAccents(x: Float, y: Float, size: Float, variant: Int) {
+    val silverBase = Color(0xFF475569)
+    val silverMid = Color(0xFFCBD5E1)
+    val silverGlint = Color(0xFFFFFFFF)
+
+    val c1 = Offset(x + size * 0.4f, y + size * 0.4f)
+    val c2 = Offset(x + size * 0.65f, y + size * 0.68f)
+
+    drawCircle(silverBase, size * 0.22f, c1)
+    drawCircle(silverMid, size * 0.16f, c1)
+    drawCircle(silverGlint, size * 0.08f, Offset(c1.x - size * 0.04f, c1.y - size * 0.04f))
+
+    drawCircle(silverBase, size * 0.18f, c2)
+    drawCircle(silverMid, size * 0.13f, c2)
+}
+
 private fun DrawScope.drawScrapAccents(x: Float, y: Float, size: Float, variant: Int) {
     val scrapColor = Color(0xFF94A3B8)
     drawRect(
@@ -351,7 +504,6 @@ private fun DrawScope.drawRockWall(x: Float, y: Float, size: Float) {
 }
 
 private fun DrawScope.drawCoreBuilding(x: Float, y: Float, width: Float, height: Float, health: Int) {
-    // Outer heavy plating
     drawRect(
         color = Color(0xFF131924),
         topLeft = Offset(x, y),
@@ -363,7 +515,6 @@ private fun DrawScope.drawCoreBuilding(x: Float, y: Float, width: Float, height:
         size = Size(width * 0.88f, height * 0.88f)
     )
 
-    // Corner reinforced brackets
     val bracketSize = width * 0.18f
     val bracketColor = Color(0xFF334155)
     drawRect(bracketColor, Offset(x, y), Size(bracketSize, bracketSize))
@@ -371,7 +522,6 @@ private fun DrawScope.drawCoreBuilding(x: Float, y: Float, width: Float, height:
     drawRect(bracketColor, Offset(x, y + height - bracketSize), Size(bracketSize, bracketSize))
     drawRect(bracketColor, Offset(x + width - bracketSize, y + height - bracketSize), Size(bracketSize, bracketSize))
 
-    // Central core reactor ring
     val center = Offset(x + width / 2f, y + height / 2f)
     drawCircle(
         color = Color(0xFF0F172A),
@@ -393,20 +543,6 @@ private fun DrawScope.drawCoreBuilding(x: Float, y: Float, width: Float, height:
         radius = width * 0.10f,
         center = center
     )
-
-    // Tech lines / solar conduits
-    drawLine(
-        color = Color(0xFF38BDF8),
-        start = Offset(x + width * 0.15f, center.y),
-        end = Offset(x + width * 0.85f, center.y),
-        strokeWidth = 3f
-    )
-    drawLine(
-        color = Color(0xFF38BDF8),
-        start = Offset(center.x, y + height * 0.15f),
-        end = Offset(center.x, y + height * 0.85f),
-        strokeWidth = 3f
-    )
 }
 
 private fun DrawScope.drawConveyorBelt(
@@ -422,10 +558,8 @@ private fun DrawScope.drawConveyorBelt(
     val railColor = Color(0xFF475569).copy(alpha = alpha)
     val arrowColor = Color(0xFF38BDF8).copy(alpha = if (isGhost) 0.6f else 0.85f)
 
-    // Base belt
     drawRect(beltColor, Offset(x, y), Size(size, size))
 
-    // Rails along sides perpendicular to direction
     when (direction) {
         Direction.NORTH, Direction.SOUTH -> {
             drawRect(railColor, Offset(x, y), Size(size * 0.12f, size))
@@ -437,7 +571,6 @@ private fun DrawScope.drawConveyorBelt(
         }
     }
 
-    // Directional chevron arrow
     if (showArrows || isGhost) {
         val center = Offset(x + size / 2f, y + size / 2f)
         rotate(degrees = direction.angleDegrees, pivot = center) {
@@ -453,6 +586,55 @@ private fun DrawScope.drawConveyorBelt(
     }
 }
 
+private fun DrawScope.drawRouter(x: Float, y: Float, size: Float, isGhost: Boolean) {
+    val alpha = if (isGhost) 0.5f else 1.0f
+    val center = Offset(x + size / 2f, y + size / 2f)
+
+    // Outer square casing
+    drawRect(Color(0xFF1E2838).copy(alpha = alpha), Offset(x, y), Size(size, size))
+    drawRect(Color(0xFF38BDF8).copy(alpha = alpha), Offset(x, y), Size(size, size), style = Stroke(width = 2f))
+
+    // 4 directional port notches
+    val portColor = Color(0xFF0F172A).copy(alpha = alpha)
+    drawRect(portColor, Offset(x + size * 0.35f, y), Size(size * 0.3f, size * 0.15f))
+    drawRect(portColor, Offset(x + size * 0.35f, y + size * 0.85f), Size(size * 0.3f, size * 0.15f))
+    drawRect(portColor, Offset(x, y + size * 0.35f), Size(size * 0.15f, size * 0.3f))
+    drawRect(portColor, Offset(x + size * 0.85f, y + size * 0.35f), Size(size * 0.15f, size * 0.3f))
+
+    // Central distributing disc
+    drawCircle(Color(0xFF0284C7).copy(alpha = alpha), size * 0.28f, center)
+    drawCircle(Color(0xFF38BDF8).copy(alpha = alpha), size * 0.18f, center)
+    drawCircle(Color.White.copy(alpha = alpha), size * 0.08f, center)
+}
+
+private fun DrawScope.drawJunction(x: Float, y: Float, size: Float, isGhost: Boolean) {
+    val alpha = if (isGhost) 0.5f else 1.0f
+    val center = Offset(x + size / 2f, y + size / 2f)
+
+    drawRect(Color(0xFF192231).copy(alpha = alpha), Offset(x, y), Size(size, size))
+
+    // Horizontal bridge duct
+    drawRect(
+        Color(0xFF334155).copy(alpha = alpha),
+        Offset(x, y + size * 0.22f),
+        Size(size, size * 0.56f)
+    )
+    // Vertical overpass duct
+    drawRect(
+        Color(0xFF475569).copy(alpha = alpha),
+        Offset(x + size * 0.22f, y),
+        Size(size * 0.56f, size)
+    )
+
+    // Center metallic plate
+    drawCircle(Color(0xFF1E293B).copy(alpha = alpha), size * 0.24f, center)
+    drawCircle(Color(0xFFE2E8F0).copy(alpha = alpha), size * 0.14f, center)
+    drawCircle(Color(0xFFF59E0B).copy(alpha = alpha), size * 0.07f, center)
+
+    // Outer border
+    drawRect(Color(0xFF64748B).copy(alpha = alpha), Offset(x, y), Size(size, size), style = Stroke(width = 1.5f))
+}
+
 private fun DrawScope.drawCopperDrill(
     x: Float,
     y: Float,
@@ -463,7 +645,6 @@ private fun DrawScope.drawCopperDrill(
 ) {
     val center = Offset(x + width / 2f, y + height / 2f)
 
-    // Housing frame
     drawRect(
         color = Color(0xFF1E2530),
         topLeft = Offset(x, y),
@@ -475,15 +656,12 @@ private fun DrawScope.drawCopperDrill(
         size = Size(width * 0.84f, height * 0.84f)
     )
 
-    // Corner yellow hazard marks
     val hazardSize = width * 0.22f
     drawRect(Color(0xFFD97706), Offset(x, y), Size(hazardSize, hazardSize * 0.5f))
     drawRect(Color(0xFFD97706), Offset(x + width - hazardSize, y), Size(hazardSize, hazardSize * 0.5f))
 
-    // Center circular drill chamber
     drawCircle(Color(0xFF0F141C), width * 0.36f, center)
 
-    // Rotating drill teeth
     rotate(degrees = rotation, pivot = center) {
         val bladeLength = width * 0.32f
         val bladeWidth = width * 0.09f
@@ -501,7 +679,6 @@ private fun DrawScope.drawCopperDrill(
         )
     }
 
-    // Drill center cap
     drawCircle(Color(0xFF1E293B), width * 0.14f, center)
     drawCircle(Color(0xFFF59E0B), width * 0.08f, center)
 }
@@ -528,19 +705,16 @@ private fun DrawScope.drawProgressBar(
     progress: Float,
     color: Color
 ) {
-    // Background bar
     drawRect(
         color = Color(0xCC0F172A),
         topLeft = Offset(screenX, screenY),
         size = Size(width, height)
     )
-    // Fill
     drawRect(
         color = color,
         topLeft = Offset(screenX, screenY),
         size = Size(width * progress.coerceIn(0f, 1f), height)
     )
-    // Border
     drawRect(
         color = Color.White,
         topLeft = Offset(screenX, screenY),
@@ -551,12 +725,9 @@ private fun DrawScope.drawProgressBar(
 
 private fun DrawScope.drawTransportedItem(x: Float, y: Float, radius: Float, resource: Resource) {
     val center = Offset(x, y)
-    // Shadow
     drawCircle(Color(0x66000000), radius * 1.15f, Offset(x + 2f, y + 2f))
-
-    // Faceted nugget
     drawCircle(resource.color, radius, center)
-    drawCircle(Color(0xFFFDE68A), radius * 0.45f, Offset(x - radius * 0.25f, y - radius * 0.25f))
+    drawCircle(Color(0xFFFFFFFF).copy(alpha = 0.5f), radius * 0.40f, Offset(x - radius * 0.25f, y - radius * 0.25f))
 }
 
 private fun DrawScope.drawBuilderDroneAndLaser(
@@ -569,31 +740,30 @@ private fun DrawScope.drawBuilderDroneAndLaser(
     val droneScreenX = cameraOffsetX + drone.posX * tileSize
     val droneScreenY = cameraOffsetY + drone.posY * tileSize
 
-    // Laser beam if building
     if (drone.isFiringLaser) {
         val targetScreenX = cameraOffsetX + drone.laserBeamX * tileSize
         val targetScreenY = cameraOffsetY + drone.laserBeamY * tileSize
 
-        // Outer glow beam
+        val beamGlowColor = if (drone.isDeconstructing) Color(0x88EF4444) else Color(0x8838BDF8)
+        val beamCoreColor = if (drone.isDeconstructing) Color(0xFFFCA5A5) else Color.White
+
         drawLine(
-            color = Color(0x8838BDF8),
+            color = beamGlowColor,
             start = Offset(droneScreenX, droneScreenY),
             end = Offset(targetScreenX, targetScreenY),
             strokeWidth = 7f * zoom,
             cap = StrokeCap.Round
         )
-        // Core beam
         drawLine(
-            color = Color.White,
+            color = beamCoreColor,
             start = Offset(droneScreenX, droneScreenY),
             end = Offset(targetScreenX, targetScreenY),
             strokeWidth = 2.5f * zoom,
             cap = StrokeCap.Round
         )
 
-        // Impact spark ring
         drawCircle(
-            color = Color(0xFF38BDF8),
+            color = if (drone.isDeconstructing) Color(0xFFEF4444) else Color(0xFF38BDF8),
             radius = 6f * zoom,
             center = Offset(targetScreenX, targetScreenY)
         )
@@ -604,16 +774,13 @@ private fun DrawScope.drawBuilderDroneAndLaser(
         )
     }
 
-    // Drone body
     val droneRadius = 14f * zoom
-    // Engine glow
     drawCircle(
-        color = Color(0x660284C7),
+        color = if (drone.isDeconstructing) Color(0x66DC2626) else Color(0x660284C7),
         radius = droneRadius * 1.4f,
         center = Offset(droneScreenX, droneScreenY)
     )
 
-    // Triangular sleek chassis
     val dronePath = Path().apply {
         moveTo(droneScreenX, droneScreenY - droneRadius)
         lineTo(droneScreenX + droneRadius * 0.85f, droneScreenY + droneRadius * 0.75f)
@@ -622,11 +789,14 @@ private fun DrawScope.drawBuilderDroneAndLaser(
         close()
     }
     drawPath(dronePath, color = Color(0xFF1E293B), style = Fill)
-    drawPath(dronePath, color = Color(0xFF38BDF8), style = Stroke(width = 2f * zoom))
+    drawPath(
+        dronePath,
+        color = if (drone.isDeconstructing) Color(0xFFEF4444) else Color(0xFF38BDF8),
+        style = Stroke(width = 2f * zoom)
+    )
 
-    // Central cockpit light
     drawCircle(
-        color = Color(0xFF38BDF8),
+        color = if (drone.isDeconstructing) Color(0xFFEF4444) else Color(0xFF38BDF8),
         radius = droneRadius * 0.28f,
         center = Offset(droneScreenX, droneScreenY)
     )

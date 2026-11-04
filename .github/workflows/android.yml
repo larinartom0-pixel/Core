@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build APK
+    name: Build Release APK
     runs-on: ubuntu-latest
     env:
       GRADLE_OPTS: "-Djava.awt.headless=true -Dfile.encoding=UTF-8"
@@ -42,9 +42,6 @@ jobs:
           cp -f my-upload-key.jks app/my-upload-key.jks 2>/dev/null || true
           cp -f debug.keystore app/debug.keystore 2>/dev/null || true
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
       - name: Build Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
@@ -52,12 +49,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'CoreSector2026!' }}
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Upload APKs
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: CoreSector-APKs
+          name: CoreSector-Release-APK
           path: |
-            **/build/outputs/apk/**/*.apk
-            **/*.apk
+            **/build/outputs/apk/release/*.apk
+            **/*release*.apk
           if-no-files-found: warn

@@ -17,9 +17,13 @@ class GameWorld(
     val floatingTexts = mutableListOf<FloatingText>()
     val sparks = mutableListOf<SparkParticle>()
     val constructionQueue = mutableListOf<String>()
+    val deconstructionQueue = mutableListOf<String>()
 
     val coreResources = mutableMapOf(
         Resource.COPPER to 150,
+        Resource.LEAD to 40,
+        Resource.COAL to 25,
+        Resource.SILVER to 30,
         Resource.SCRAP to 0
     )
 
@@ -90,15 +94,13 @@ class GameWorld(
         if (existing != null) {
             blueprints.removeAll { it.id == existing.id }
             addFloatingText("✕ Скасовано", tileX + 0.5f, tileY + 0.5f, Color(0xFFEF4444))
-            return false // removed
+            return false
         }
 
-        // Try primary origin: tapped tile as top-left
         var originX = tileX.coerceIn(0, width - type.width)
         var originY = tileY.coerceIn(0, height - type.height)
 
         if (type.width > 1 || type.height > 1) {
-            // Check candidate placements covering the tapped tile
             val candidateOrigins = listOf(
                 Pair(originX, originY),
                 Pair(tileX - 1, tileY),
@@ -140,19 +142,66 @@ class GameWorld(
     }
 
     /**
-     * Add conveyor along drag line
+     * Add conveyor along drag line.
+     * Auto-junction: If crossing an existing perpendicular conveyor, automatically replace it with a Junction!
      */
     fun addConveyorAt(tileX: Int, tileY: Int, direction: Direction) {
         if (tileX !in 0 until width || tileY !in 0 until height) return
-        val existingBp = getBlueprintAt(tileX, tileY)
-        if (existingBp != null) {
-            // Replace with updated direction if needed
-            if (existingBp.direction != direction && existingBp.type == BuildingType.CONVEYOR) {
-                blueprints.removeAll { it.id == existingBp.id }
-                blueprints.add(existingBp.copy(direction = direction))
+
+        // Check if there's already an existing building at this tile
+        val existingBuilding = getBuildingAt(tileX, tileY)
+        if (existingBuilding != null && existingBuilding.type == BuildingType.CONVEYOR) {
+            val isExistingVertical = existingBuilding.direction == Direction.NORTH || existingBuilding.direction == Direction.SOUTH
+            val isNewVertical = direction == Direction.NORTH || direction == Direction.SOUTH
+            if (isExistingVertical != isNewVertical) {
+                // Perpendicular crossing! Convert to Junction
+                buildings.remove(existingBuilding)
+                blueprints.removeAll { it.originX == tileX && it.originY == tileY }
+                blueprints.add(
+                    Blueprint(
+                        id = UUID.randomUUID().toString(),
+                        type = BuildingType.JUNCTION,
+                        originX = tileX,
+                        originY = tileY,
+                        direction = direction,
+                        isValid = true
+                    )
+                )
+                addFloatingText("+ Перехрестя", tileX + 0.5f, tileY + 0.5f, Color(0xFF38BDF8))
+                return
             }
             return
         }
+
+        val existingBp = getBlueprintAt(tileX, tileY)
+        if (existingBp != null) {
+            if (existingBp.type == BuildingType.CONVEYOR) {
+                val isBpVertical = existingBp.direction == Direction.NORTH || existingBp.direction == Direction.SOUTH
+                val isNewVertical = direction == Direction.NORTH || direction == Direction.SOUTH
+                if (isBpVertical != isNewVertical) {
+                    // Turn blueprint into Junction
+                    blueprints.removeAll { it.id == existingBp.id }
+                    blueprints.add(
+                        Blueprint(
+                            id = UUID.randomUUID().toString(),
+                            type = BuildingType.JUNCTION,
+                            originX = tileX,
+                            originY = tileY,
+                            direction = direction,
+                            isValid = true
+                        )
+                    )
+                    addFloatingText("+ Перехрестя", tileX + 0.5f, tileY + 0.5f, Color(0xFF38BDF8))
+                    return
+                }
+                if (existingBp.direction != direction) {
+                    blueprints.removeAll { it.id == existingBp.id }
+                    blueprints.add(existingBp.copy(direction = direction))
+                }
+            }
+            return
+        }
+
         if (isTileBuildable(tileX, tileY, BuildingType.CONVEYOR)) {
             blueprints.add(
                 Blueprint(
@@ -167,23 +216,30 @@ class GameWorld(
         }
     }
 
-    fun getTotalBlueprintCost(): Int {
-        return blueprints.sumOf { it.costCopper }
-    }
+    fun getTotalBlueprintCopperCost(): Int = blueprints.sumOf { it.costCopper }
+    fun getTotalBlueprintSilverCost(): Int = blueprints.sumOf { it.costSilver }
 
     fun confirmBlueprints(): Boolean {
-        val totalCost = getTotalBlueprintCost()
-        val available = coreResources[Resource.COPPER] ?: 0
-        if (available < totalCost) {
-            addFloatingText("Недостатньо міді! Потрібно $totalCost", coreCenterX, coreCenterY - 2f, Color(0xFFEF4444))
+        val totalCu = getTotalBlueprintCopperCost()
+        val totalAg = getTotalBlueprintSilverCost()
+        val availCu = coreResources[Resource.COPPER] ?: 0
+        val availAg = coreResources[Resource.SILVER] ?: 0
+
+        if (availCu < totalCu) {
+            addFloatingText("Недостатньо міді! Потрібно $totalCu", coreCenterX, coreCenterY - 2f, Color(0xFFEF4444))
+            return false
+        }
+        if (availAg < totalAg) {
+            addFloatingText("Недостатньо срібла! Потрібно $totalAg", coreCenterX, coreCenterY - 2f, Color(0xFFEF4444))
             return false
         }
 
-        // Deduct cost
-        coreResources[Resource.COPPER] = available - totalCost
-        addFloatingText("-$totalCost Міді", coreCenterX, coreCenterY - 1.5f, Color(0xFFF59E0B))
+        coreResources[Resource.COPPER] = availCu - totalCu
+        if (totalAg > 0) {
+            coreResources[Resource.SILVER] = availAg - totalAg
+        }
+        addFloatingText("-$totalCu Cu" + if (totalAg > 0) " -$totalAg Ag" else "", coreCenterX, coreCenterY - 1.5f, Color(0xFFF59E0B))
 
-        // Convert blueprints to buildings
         for (bp in blueprints) {
             val building = BuildingInstance(
                 id = bp.id,
@@ -204,6 +260,67 @@ class GameWorld(
         blueprints.clear()
     }
 
+    // --- Deconstruction / Demolish Methods ---
+
+    fun toggleMarkForDeconstruction(tileX: Int, tileY: Int): Boolean {
+        val b = getBuildingAt(tileX, tileY) ?: return false
+        if (b.type == BuildingType.CORE) {
+            addFloatingText("Ядро не можна знести!", tileX + 0.5f, tileY + 0.5f, Color(0xFFEF4444))
+            return false
+        }
+        b.isMarkedForDeconstruction = !b.isMarkedForDeconstruction
+        if (b.isMarkedForDeconstruction) {
+            addFloatingText("На знесення", b.centerX, b.centerY, Color(0xFFEF4444))
+        } else {
+            addFloatingText("Скасовано", b.centerX, b.centerY, Color(0xFF94A3B8))
+        }
+        return b.isMarkedForDeconstruction
+    }
+
+    fun markAreaForDeconstruction(x1: Int, y1: Int, x2: Int, y2: Int): Int {
+        val minX = min(x1, x2)
+        val maxX = max(x1, x2)
+        val minY = min(y1, y2)
+        val maxY = max(y1, y2)
+
+        var markedCount = 0
+        for (b in buildings) {
+            if (b.type == BuildingType.CORE) continue
+            val touches = (b.originX <= maxX && (b.originX + b.type.width - 1) >= minX) &&
+                    (b.originY <= maxY && (b.originY + b.type.height - 1) >= minY)
+            if (touches && !b.isMarkedForDeconstruction) {
+                b.isMarkedForDeconstruction = true
+                markedCount++
+            }
+        }
+        return markedCount
+    }
+
+    fun getMarkedForDeconstructionCount(): Int {
+        return buildings.count { it.isMarkedForDeconstruction && it.type != BuildingType.CORE }
+    }
+
+    fun confirmDeconstruction(): Int {
+        var count = 0
+        for (b in buildings) {
+            if (b.isMarkedForDeconstruction && b.type != BuildingType.CORE) {
+                if (!deconstructionQueue.contains(b.id)) {
+                    deconstructionQueue.add(b.id)
+                    count++
+                }
+            }
+        }
+        return count
+    }
+
+    fun cancelDeconstruction() {
+        for (b in buildings) {
+            b.isMarkedForDeconstruction = false
+            b.deconstructProgress = 0f
+        }
+        deconstructionQueue.clear()
+    }
+
     fun addFloatingText(text: String, x: Float, y: Float, color: Color) {
         floatingTexts.add(
             FloatingText(
@@ -219,11 +336,78 @@ class GameWorld(
     fun update(dt: Float) {
         updateDrone(dt)
         updateDrills(dt)
-        updateConveyors(dt)
+        updateLogistics(dt)
         updateVisualEffects(dt)
     }
 
     private fun updateDrone(dt: Float) {
+        // Priority 1: Deconstruction tasks (1.5x speed)
+        val currentDeconstructId = deconstructionQueue.firstOrNull()
+        val deconstructBuilding = if (currentDeconstructId != null) buildings.firstOrNull { it.id == currentDeconstructId } else null
+
+        if (deconstructBuilding != null) {
+            val tx = deconstructBuilding.centerX
+            val ty = deconstructBuilding.centerY
+            val dist = hypot(tx - drone.posX, ty - drone.posY)
+
+            if (dist > 1.2f) {
+                drone.state = DroneState.FLYING_TO_DECONSTRUCT
+                drone.isFiringLaser = false
+                drone.isDeconstructing = true
+                val speed = 8.5f
+                val dirX = (tx - drone.posX) / dist
+                val dirY = (ty - drone.posY) / dist
+                drone.posX += dirX * speed * dt
+                drone.posY += dirY * speed * dt
+            } else {
+                drone.state = DroneState.DECONSTRUCTING
+                drone.isFiringLaser = true
+                drone.isDeconstructing = true
+                drone.laserBeamX = tx
+                drone.laserBeamY = ty
+
+                // Deconstruction is 1.5x faster than building
+                val deconstructSpeed = 1.5f / deconstructBuilding.type.buildTimeSeconds
+                deconstructBuilding.deconstructProgress += deconstructSpeed * dt
+
+                // Orange/red dismantling sparks
+                if (Math.random() < 0.45) {
+                    val angle = (Math.random() * 2 * Math.PI).toFloat()
+                    val sparkSpeed = 1.8f + (Math.random() * 2f).toFloat()
+                    sparks.add(
+                        SparkParticle(
+                            x = tx,
+                            y = ty,
+                            vx = cos(angle) * sparkSpeed,
+                            vy = sin(angle) * sparkSpeed,
+                            color = Color(0xFFEF4444)
+                        )
+                    )
+                }
+
+                if (deconstructBuilding.deconstructProgress >= 1.0f) {
+                    // Refund 100% resources back to Core
+                    val cuRefund = deconstructBuilding.type.costCopper
+                    val agRefund = deconstructBuilding.type.costSilver
+                    coreResources[Resource.COPPER] = (coreResources[Resource.COPPER] ?: 0) + cuRefund
+                    if (agRefund > 0) {
+                        coreResources[Resource.SILVER] = (coreResources[Resource.SILVER] ?: 0) + agRefund
+                    }
+
+                    addFloatingText("+$cuRefund Cu" + if (agRefund > 0) " +$agRefund Ag" else "", tx, ty - 0.5f, Color(0xFF10B981))
+
+                    // Remove building and any items on its footprint
+                    items.removeAll { deconstructBuilding.occupies(it.tileX, it.tileY) }
+                    buildings.remove(deconstructBuilding)
+                    deconstructionQueue.remove(deconstructBuilding.id)
+                    drone.isFiringLaser = false
+                    drone.isDeconstructing = false
+                }
+            }
+            return
+        }
+
+        // Priority 2: Construction tasks
         val currentTargetId = constructionQueue.firstOrNull()
         val targetBuilding = if (currentTargetId != null) buildings.firstOrNull { it.id == currentTargetId } else null
 
@@ -233,25 +417,24 @@ class GameWorld(
             val dist = hypot(tx - drone.posX, ty - drone.posY)
 
             if (dist > 1.2f) {
-                // Fly toward target
                 drone.state = DroneState.FLYING_TO_BUILD
                 drone.isFiringLaser = false
+                drone.isDeconstructing = false
                 val speed = 7.5f
                 val dirX = (tx - drone.posX) / dist
                 val dirY = (ty - drone.posY) / dist
                 drone.posX += dirX * speed * dt
                 drone.posY += dirY * speed * dt
             } else {
-                // In range: build with laser!
                 drone.state = DroneState.BUILDING
                 drone.isFiringLaser = true
+                drone.isDeconstructing = false
                 drone.laserBeamX = tx
                 drone.laserBeamY = ty
 
                 val buildSpeed = 1f / targetBuilding.type.buildTimeSeconds
                 targetBuilding.buildProgress = (targetBuilding.buildProgress + buildSpeed * dt).coerceAtMost(1f)
 
-                // Emit sparks
                 if (Math.random() < 0.45) {
                     val angle = (Math.random() * 2 * Math.PI).toFloat()
                     val sparkSpeed = 1.5f + (Math.random() * 2f).toFloat()
@@ -273,7 +456,6 @@ class GameWorld(
                 }
             }
         } else {
-            // Clean up completed queue items
             if (currentTargetId != null && (targetBuilding == null || targetBuilding.isFullyBuilt)) {
                 constructionQueue.remove(currentTargetId)
             }
@@ -283,6 +465,7 @@ class GameWorld(
             if (distToCore > 2.5f) {
                 drone.state = DroneState.RETURNING_TO_CORE
                 drone.isFiringLaser = false
+                drone.isDeconstructing = false
                 val speed = 6.0f
                 val dirX = (coreCenterX - drone.posX) / distToCore
                 val dirY = (coreCenterY - drone.posY) / distToCore
@@ -291,6 +474,7 @@ class GameWorld(
             } else {
                 drone.state = DroneState.IDLE_AT_CORE
                 drone.isFiringLaser = false
+                drone.isDeconstructing = false
                 drone.idleAngle = (drone.idleAngle + dt * 1.6f) % (2f * Math.PI.toFloat())
                 val targetOrbitX = coreCenterX + cos(drone.idleAngle) * 1.8f
                 val targetOrbitY = coreCenterY + sin(drone.idleAngle) * 1.8f
@@ -304,26 +488,33 @@ class GameWorld(
         for (building in buildings) {
             if (building.type != BuildingType.COPPER_DRILL || !building.isFullyBuilt) continue
 
-            // Count underlying copper ore tiles
-            var copperTileCount = 0
+            // Inspect underlying 2x2 tiles for any ore
+            val oresFound = mutableListOf<Resource>()
             for (dx in 0 until building.type.width) {
                 for (dy in 0 until building.type.height) {
                     val tx = building.originX + dx
                     val ty = building.originY + dy
-                    if (tx in 0 until width && ty in 0 until height && grid[tx][ty].type == TileType.COPPER_ORE) {
-                        copperTileCount++
+                    if (tx in 0 until width && ty in 0 until height) {
+                        val drop = grid[tx][ty].type.resourceDrop
+                        if (drop != null) {
+                            oresFound.add(drop)
+                        }
                     }
                 }
             }
 
-            if (copperTileCount > 0) {
-                // Rotate drill animation
-                building.drillRotation = (building.drillRotation + dt * 260f * copperTileCount) % 360f
-                building.drillTimer += dt * (0.6f + copperTileCount * 0.45f)
+            if (oresFound.isNotEmpty()) {
+                val oreCount = oresFound.size
+                // Rate: exactly 1.2 items per second if placed on all 4 ore tiles!
+                // If fewer tiles, proportional: (oreCount / 4.0) * 1.2 items/sec
+                val itemsPerSecond = (oreCount / 4.0f) * 1.2f
 
-                if (building.drillTimer >= 1.4f) {
-                    // Try to output copper
-                    val outputSuccess = outputDrillResource(building, Resource.COPPER)
+                building.drillRotation = (building.drillRotation + dt * 200f * oreCount) % 360f
+                building.drillTimer += dt * itemsPerSecond
+
+                if (building.drillTimer >= 1.0f) {
+                    val minedResource = oresFound.first()
+                    val outputSuccess = outputMinedResource(building, minedResource)
                     if (outputSuccess) {
                         building.drillTimer = 0f
                     }
@@ -332,8 +523,7 @@ class GameWorld(
         }
     }
 
-    private fun outputDrillResource(drill: BuildingInstance, resource: Resource): Boolean {
-        // Collect adjacent tiles around 2x2 drill
+    private fun outputMinedResource(drill: BuildingInstance, resource: Resource): Boolean {
         val borderTiles = mutableListOf<Pair<Int, Int>>()
         for (dx in 0 until drill.type.width) {
             borderTiles.add(Pair(drill.originX + dx, drill.originY - 1)) // North border
@@ -344,92 +534,193 @@ class GameWorld(
             borderTiles.add(Pair(drill.originX + drill.type.width, drill.originY + dy)) // East border
         }
 
-        // 1. Check for adjacent conveyor that has space
+        // 1. Check for adjacent conveyor, router, or junction with available space
         for (tile in borderTiles) {
-            val b = getBuildingAt(tile.first, tile.second)
-            if (b != null && b.type == BuildingType.CONVEYOR && b.isFullyBuilt) {
-                val hasSpace = items.none { it.tileX == tile.first && it.tileY == tile.second && it.progress < 0.35f }
-                if (hasSpace) {
-                    items.add(
-                        TransportedItem(
-                            id = UUID.randomUUID().toString(),
-                            resource = resource,
-                            tileX = tile.first,
-                            tileY = tile.second,
-                            progress = 0.05f,
-                            direction = b.direction
+            val b = getBuildingAt(tile.first, tile.second) ?: continue
+            if (!b.isFullyBuilt) continue
+
+            when (b.type) {
+                BuildingType.CONVEYOR -> {
+                    val hasSpace = items.none { it.tileX == tile.first && it.tileY == tile.second && it.progress < 0.35f }
+                    if (hasSpace) {
+                        items.add(
+                            TransportedItem(
+                                id = UUID.randomUUID().toString(),
+                                resource = resource,
+                                tileX = tile.first,
+                                tileY = tile.second,
+                                progress = 0.05f,
+                                direction = b.direction
+                            )
                         )
-                    )
+                        return true
+                    }
+                }
+                BuildingType.ROUTER, BuildingType.JUNCTION -> {
+                    val hasSpace = items.none { it.tileX == tile.first && it.tileY == tile.second && it.progress < 0.35f }
+                    if (hasSpace) {
+                        // Direction pointing from drill to building
+                        val dir = Direction.fromDelta(tile.first - (drill.originX + 1), tile.second - (drill.originY + 1))
+                        items.add(
+                            TransportedItem(
+                                id = UUID.randomUUID().toString(),
+                                resource = resource,
+                                tileX = tile.first,
+                                tileY = tile.second,
+                                progress = 0.05f,
+                                direction = dir
+                            )
+                        )
+                        return true
+                    }
+                }
+                BuildingType.CORE -> {
+                    coreResources[resource] = (coreResources[resource] ?: 0) + 1
+                    addFloatingText("+1 ${resource.displayName}", tile.first + 0.5f, tile.second + 0.5f, resource.color)
                     return true
                 }
-            }
-        }
-
-        // 2. Direct feed into Core if adjacent
-        for (tile in borderTiles) {
-            val b = getBuildingAt(tile.first, tile.second)
-            if (b != null && b.type == BuildingType.CORE) {
-                coreResources[resource] = (coreResources[resource] ?: 0) + 1
-                addFloatingText("+1 ${resource.displayName}", tile.first + 0.5f, tile.second + 0.5f, resource.color)
-                return true
+                else -> {}
             }
         }
 
         return false
     }
 
-    private fun updateConveyors(dt: Float) {
-        val speed = 2.4f // tiles per second
+    private fun updateLogistics(dt: Float) {
+        val conveyorSpeed = 2.4f
+        val internalSpeed = 3.2f
         val itemsToRemove = mutableListOf<TransportedItem>()
 
         for (item in items) {
             val currentBuilding = getBuildingAt(item.tileX, item.tileY)
-            if (currentBuilding == null || currentBuilding.type != BuildingType.CONVEYOR || !currentBuilding.isFullyBuilt) {
-                // Conveyor was removed or invalid
+            if (currentBuilding == null || !currentBuilding.isFullyBuilt) {
                 itemsToRemove.add(item)
                 continue
             }
 
-            item.direction = currentBuilding.direction
+            when (currentBuilding.type) {
+                BuildingType.CONVEYOR -> {
+                    item.direction = currentBuilding.direction
 
-            // Check if blocked by another item ahead on the same conveyor tile
-            val itemAhead = items.firstOrNull { other ->
-                other.id != item.id && other.tileX == item.tileX && other.tileY == item.tileY &&
-                        other.progress > item.progress && (other.progress - item.progress) < 0.28f
-            }
-
-            if (itemAhead != null) {
-                // Wait behind item
-                continue
-            }
-
-            if (item.progress < 1.0f) {
-                item.progress = (item.progress + dt * speed).coerceAtMost(1.0f)
-            }
-
-            if (item.progress >= 1.0f) {
-                // Try to move to next tile
-                val nextX = item.tileX + item.direction.dx
-                val nextY = item.tileY + item.direction.dy
-
-                val nextBuilding = getBuildingAt(nextX, nextY)
-                if (nextBuilding != null && nextBuilding.type == BuildingType.CORE) {
-                    // Delivered to core!
-                    coreResources[item.resource] = (coreResources[item.resource] ?: 0) + 1
-                    addFloatingText("+1 ${item.resource.displayName}", nextX + 0.5f, nextY + 0.5f, item.resource.color)
-                    itemsToRemove.add(item)
-                } else if (nextBuilding != null && nextBuilding.type == BuildingType.CONVEYOR && nextBuilding.isFullyBuilt) {
-                    // Check if entrance to next conveyor is clear
-                    val nextBlocked = items.any { other ->
-                        other.tileX == nextX && other.tileY == nextY && other.progress < 0.28f
+                    // Collision with item ahead
+                    val itemAhead = items.firstOrNull { other ->
+                        other.id != item.id && other.tileX == item.tileX && other.tileY == item.tileY &&
+                                other.progress > item.progress && (other.progress - item.progress) < 0.28f
                     }
-                    if (!nextBlocked) {
-                        item.tileX = nextX
-                        item.tileY = nextY
-                        item.direction = nextBuilding.direction
-                        item.progress = 0f
+                    if (itemAhead != null) continue
+
+                    if (item.progress < 1.0f) {
+                        item.progress = (item.progress + dt * conveyorSpeed).coerceAtMost(1.0f)
+                    }
+
+                    if (item.progress >= 1.0f) {
+                        val nextX = item.tileX + item.direction.dx
+                        val nextY = item.tileY + item.direction.dy
+                        val nextBuilding = getBuildingAt(nextX, nextY)
+
+                        if (nextBuilding != null && nextBuilding.type == BuildingType.CORE) {
+                            coreResources[item.resource] = (coreResources[item.resource] ?: 0) + 1
+                            addFloatingText("+1 ${item.resource.displayName}", nextX + 0.5f, nextY + 0.5f, item.resource.color)
+                            itemsToRemove.add(item)
+                        } else if (nextBuilding != null && nextBuilding.isFullyBuilt) {
+                            val nextBlocked = items.any { other ->
+                                other.tileX == nextX && other.tileY == nextY && other.progress < 0.30f
+                            }
+                            if (!nextBlocked) {
+                                item.tileX = nextX
+                                item.tileY = nextY
+                                item.progress = 0f
+                                if (nextBuilding.type == BuildingType.CONVEYOR) {
+                                    item.direction = nextBuilding.direction
+                                }
+                            }
+                        }
                     }
                 }
+
+                BuildingType.ROUTER -> {
+                    if (item.progress < 1.0f) {
+                        item.progress = (item.progress + dt * internalSpeed).coerceAtMost(1.0f)
+                    }
+
+                    if (item.progress >= 1.0f) {
+                        // Router distributes evenly across all available outputs
+                        val neighbors = listOf(
+                            Pair(item.tileX, item.tileY - 1) to Direction.NORTH,
+                            Pair(item.tileX + 1, item.tileY) to Direction.EAST,
+                            Pair(item.tileX, item.tileY + 1) to Direction.SOUTH,
+                            Pair(item.tileX - 1, item.tileY) to Direction.WEST
+                        )
+
+                        val validOutputs = neighbors.filter { (pos, dir) ->
+                            val b = getBuildingAt(pos.first, pos.second)
+                            if (b == null || !b.isFullyBuilt) return@filter false
+                            if (b.type == BuildingType.CORE) return@filter true
+                            if (b.type == BuildingType.CONVEYOR) {
+                                return@filter b.direction != dir.opposite()
+                            }
+                            if (b.type == BuildingType.ROUTER || b.type == BuildingType.JUNCTION) return@filter true
+                            false
+                        }
+
+                        if (validOutputs.isNotEmpty()) {
+                            val chosenIndex = currentBuilding.routerOutputIndex % validOutputs.size
+                            val (targetPos, targetDir) = validOutputs[chosenIndex]
+                            val targetBuilding = getBuildingAt(targetPos.first, targetPos.second)
+
+                            if (targetBuilding != null && targetBuilding.type == BuildingType.CORE) {
+                                coreResources[item.resource] = (coreResources[item.resource] ?: 0) + 1
+                                addFloatingText("+1 ${item.resource.displayName}", targetPos.first + 0.5f, targetPos.second + 0.5f, item.resource.color)
+                                itemsToRemove.add(item)
+                                currentBuilding.routerOutputIndex++
+                            } else {
+                                val targetBlocked = items.any { other ->
+                                    other.tileX == targetPos.first && other.tileY == targetPos.second && other.progress < 0.30f
+                                }
+                                if (!targetBlocked) {
+                                    item.tileX = targetPos.first
+                                    item.tileY = targetPos.second
+                                    item.progress = 0f
+                                    item.direction = if (targetBuilding?.type == BuildingType.CONVEYOR) targetBuilding.direction else targetDir
+                                    currentBuilding.routerOutputIndex++
+                                }
+                            }
+                        }
+                    }
+                }
+
+                BuildingType.JUNCTION -> {
+                    // Item continues straight through along its original direction!
+                    if (item.progress < 1.0f) {
+                        item.progress = (item.progress + dt * internalSpeed).coerceAtMost(1.0f)
+                    }
+
+                    if (item.progress >= 1.0f) {
+                        val nextX = item.tileX + item.direction.dx
+                        val nextY = item.tileY + item.direction.dy
+                        val nextBuilding = getBuildingAt(nextX, nextY)
+
+                        if (nextBuilding != null && nextBuilding.type == BuildingType.CORE) {
+                            coreResources[item.resource] = (coreResources[item.resource] ?: 0) + 1
+                            addFloatingText("+1 ${item.resource.displayName}", nextX + 0.5f, nextY + 0.5f, item.resource.color)
+                            itemsToRemove.add(item)
+                        } else if (nextBuilding != null && nextBuilding.isFullyBuilt) {
+                            val nextBlocked = items.any { other ->
+                                other.tileX == nextX && other.tileY == nextY && other.progress < 0.30f
+                            }
+                            if (!nextBlocked) {
+                                item.tileX = nextX
+                                item.tileY = nextY
+                                item.progress = 0f
+                                if (nextBuilding.type == BuildingType.CONVEYOR) {
+                                    item.direction = nextBuilding.direction
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {}
             }
         }
 
@@ -437,24 +728,22 @@ class GameWorld(
     }
 
     private fun updateVisualEffects(dt: Float) {
-        // Floating texts
         val textsToRemove = mutableListOf<FloatingText>()
         for (txt in floatingTexts) {
             txt.lifetime -= dt
-            txt.y -= dt * 0.7f // float upward
+            txt.y -= dt * 0.7f
             if (txt.lifetime <= 0f) {
                 textsToRemove.add(txt)
             }
         }
         floatingTexts.removeAll(textsToRemove)
 
-        // Sparks
         val sparksToRemove = mutableListOf<SparkParticle>()
         for (spark in sparks) {
             spark.lifetime -= dt
             spark.x += spark.vx * dt
             spark.y += spark.vy * dt
-            spark.vy += dt * 1.5f // gentle gravity
+            spark.vy += dt * 1.5f
             if (spark.lifetime <= 0f) {
                 sparksToRemove.add(spark)
             }

@@ -23,9 +23,11 @@ class ExampleUnitTest {
         assertEquals(3, core.type.height)
         assertTrue(core.isFullyBuilt)
 
-        // Initial copper balance
+        // Initial copper & silver balance
         val copper = world.coreResources[Resource.COPPER] ?: 0
+        val silver = world.coreResources[Resource.SILVER] ?: 0
         assertTrue("Core should have starting copper", copper >= 100)
+        assertTrue("Core should have starting silver", silver >= 20)
     }
 
     @Test
@@ -53,7 +55,7 @@ class ExampleUnitTest {
         // Place blueprint
         world.toggleBlueprint(12, 12, BuildingType.CONVEYOR, Direction.EAST)
         assertEquals(1, world.blueprints.size)
-        assertEquals(1, world.getTotalBlueprintCost())
+        assertEquals(1, world.getTotalBlueprintCopperCost())
 
         // Confirm
         val confirmed = world.confirmBlueprints()
@@ -81,7 +83,6 @@ class ExampleUnitTest {
         val initialCopper = world.coreResources[Resource.COPPER] ?: 0
 
         // Place a conveyor pointing directly into Core from the left (West side of Core)
-        // Core is at (19, 19). Conveyor at (18, 19) facing EAST points into (19, 19)
         val conveyorX = core.originX - 1
         val conveyorY = core.originY
         world.grid[conveyorX][conveyorY] = world.grid[conveyorX][conveyorY].copy(type = TileType.DIRT)
@@ -113,5 +114,103 @@ class ExampleUnitTest {
         val updatedCopper = world.coreResources[Resource.COPPER] ?: 0
         assertEquals(initialCopper, updatedCopper) // initial copper minus 1 for build + 1 for delivered item
         assertEquals(0, world.items.size)
+    }
+
+    @Test
+    fun testAutoJunctionConversion() {
+        val world = GameWorld(40, 40)
+        val x = 15
+        val y = 15
+
+        // First place a vertical conveyor
+        world.toggleBlueprint(x, y, BuildingType.CONVEYOR, Direction.SOUTH)
+        world.confirmBlueprints()
+        val conv = world.buildings.first { it.originX == x && it.originY == y }
+        conv.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        // Drag a horizontal conveyor crossing this tile
+        world.addConveyorAt(x, y, Direction.EAST)
+
+        // Should automatically convert existing conveyor into a Junction blueprint
+        val junctionBp = world.blueprints.firstOrNull { it.originX == x && it.originY == y }
+        assertNotNull("Should create a junction blueprint at intersection", junctionBp)
+        assertEquals(BuildingType.JUNCTION, junctionBp!!.type)
+    }
+
+    @Test
+    fun testDeconstructionRefund() {
+        val world = GameWorld(40, 40)
+        val x = 10
+        val y = 10
+
+        // Place a router
+        world.toggleBlueprint(x, y, BuildingType.ROUTER, Direction.EAST)
+        world.confirmBlueprints()
+        val router = world.buildings.first { it.originX == x && it.originY == y }
+        router.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        val copperBeforeDemolish = world.coreResources[Resource.COPPER] ?: 0
+
+        // Mark for deconstruction
+        world.toggleMarkForDeconstruction(x, y)
+        assertEquals(1, world.getMarkedForDeconstructionCount())
+
+        // Confirm demolish
+        world.confirmDeconstruction()
+
+        // Simulate drone dismantling loop
+        for (i in 0 until 120) {
+            world.update(0.05f)
+        }
+
+        // Router should be removed and 100% copper refunded
+        val remaining = world.buildings.firstOrNull { it.originX == x && it.originY == y }
+        assertNull("Building should be dismantled", remaining)
+        val copperAfterDemolish = world.coreResources[Resource.COPPER] ?: 0
+        assertEquals(copperBeforeDemolish + BuildingType.ROUTER.costCopper, copperAfterDemolish)
+    }
+
+    @Test
+    fun testDrillMiningRate() {
+        val world = GameWorld(40, 40)
+        val drillX = 5
+        val drillY = 5
+
+        // Place copper ores on all 4 tiles
+        for (dx in 0 until 2) {
+            for (dy in 0 until 2) {
+                world.grid[drillX + dx][drillY + dy] = world.grid[drillX + dx][drillY + dy].copy(type = TileType.COPPER_ORE)
+            }
+        }
+
+        // Place drill
+        world.toggleBlueprint(drillX, drillY, BuildingType.COPPER_DRILL, Direction.EAST)
+        world.confirmBlueprints()
+        val drill = world.buildings.first { it.originX == drillX && it.originY == drillY }
+        drill.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        // Place a conveyor line adjacent to drill's East border (drill is 2x2 at (5,5))
+        for (cx in (drillX + 2)..(drillX + 15)) {
+            world.grid[cx][drillY] = world.grid[cx][drillY].copy(type = TileType.DIRT)
+            world.toggleBlueprint(cx, drillY, BuildingType.CONVEYOR, Direction.EAST)
+        }
+        world.confirmBlueprints()
+        for (b in world.buildings) {
+            b.buildProgress = 1.0f
+        }
+        world.constructionQueue.clear()
+
+        // Count mined items over 10 seconds
+        val itemsStart = world.items.size
+        for (i in 0 until 200) { // 200 * 0.05s = 10.0 seconds
+            world.update(0.05f)
+        }
+
+        // At 1.2 items/sec for 10s, should be around 12 items mined (allowing small timing delta)
+        val itemsProduced = world.items.size - itemsStart
+        assertTrue("Expected ~12 items in 10s at 1.2 items/sec, got $itemsProduced", itemsProduced in 10..14)
     }
 }

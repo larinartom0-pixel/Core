@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -48,6 +49,13 @@ class GameViewModel : ViewModel() {
     private val _conveyorDirection = MutableStateFlow(Direction.EAST)
     val conveyorDirection = _conveyorDirection.asStateFlow()
 
+    // Demolish / Deconstruction tool
+    private val _isDemolishMode = MutableStateFlow(false)
+    val isDemolishMode = _isDemolishMode.asStateFlow()
+
+    var demolishDragStart by mutableStateOf<Pair<Int, Int>?>(null)
+    var demolishDragCurrent by mutableStateOf<Pair<Int, Int>?>(null)
+
     // Settings
     private val _showGrid = MutableStateFlow(true)
     val showGrid = _showGrid.asStateFlow()
@@ -61,13 +69,13 @@ class GameViewModel : ViewModel() {
     private var gameLoopJob: Job? = null
 
     init {
-        // Initial camera center
         centerOnCore(1080f, 2160f)
     }
 
     fun startNewGame() {
         _world = GameWorld()
         _selectedTool.value = null
+        _isDemolishMode.value = false
         _conveyorDirection.value = Direction.EAST
         centerOnCore(1080f, 2160f)
         _currentScreen.value = AppScreen.IN_GAME
@@ -101,12 +109,34 @@ class GameViewModel : ViewModel() {
         cameraOffsetY += dy
     }
 
-    fun onZoomIn() {
-        zoom = (zoom * 1.25f).coerceAtMost(2.5f)
+    /**
+     * Smooth zoom centered on the screen instead of the top-left corner
+     */
+    fun onZoomIn(screenWidth: Float, screenHeight: Float) {
+        zoomCentered(zoom * 1.25f, screenWidth, screenHeight)
     }
 
-    fun onZoomOut() {
-        zoom = (zoom / 1.25f).coerceAtLeast(0.6f)
+    fun onZoomOut(screenWidth: Float, screenHeight: Float) {
+        zoomCentered(zoom / 1.25f, screenWidth, screenHeight)
+    }
+
+    fun zoomCentered(newZoom: Float, screenWidth: Float, screenHeight: Float) {
+        val clampedZoom = newZoom.coerceIn(0.5f, 3.0f)
+        if (clampedZoom == zoom) return
+
+        val baseTileSize = 48f
+        val centerX = screenWidth / 2f
+        val centerY = screenHeight / 2f
+
+        // World coordinate currently at screen center
+        val worldX = (centerX - cameraOffsetX) / (baseTileSize * zoom)
+        val worldY = (centerY - cameraOffsetY) / (baseTileSize * zoom)
+
+        zoom = clampedZoom
+
+        // Adjust offsets so world point remains at center
+        cameraOffsetX = centerX - worldX * (baseTileSize * zoom)
+        cameraOffsetY = centerY - worldY * (baseTileSize * zoom)
     }
 
     fun centerOnCore(screenWidth: Float, screenHeight: Float) {
@@ -119,6 +149,16 @@ class GameViewModel : ViewModel() {
 
     fun selectTool(tool: BuildingType?) {
         _selectedTool.value = tool
+        if (tool != null) {
+            _isDemolishMode.value = false
+        }
+    }
+
+    fun toggleDemolishMode() {
+        _isDemolishMode.value = !_isDemolishMode.value
+        if (_isDemolishMode.value) {
+            _selectedTool.value = null
+        }
     }
 
     fun rotateConveyor() {
@@ -126,6 +166,10 @@ class GameViewModel : ViewModel() {
     }
 
     fun onTapTile(tileX: Int, tileY: Int) {
+        if (_isDemolishMode.value) {
+            _world.toggleMarkForDeconstruction(tileX, tileY)
+            return
+        }
         val tool = _selectedTool.value ?: return
         _world.toggleBlueprint(tileX, tileY, tool, _conveyorDirection.value)
     }
@@ -136,12 +180,24 @@ class GameViewModel : ViewModel() {
         }
     }
 
+    fun onDemolishAreaSelected(x1: Int, y1: Int, x2: Int, y2: Int) {
+        _world.markAreaForDeconstruction(x1, y1, x2, y2)
+    }
+
     fun confirmBlueprints() {
         _world.confirmBlueprints()
     }
 
     fun cancelBlueprints() {
         _world.cancelBlueprints()
+    }
+
+    fun confirmDemolish() {
+        _world.confirmDeconstruction()
+    }
+
+    fun cancelDemolish() {
+        _world.cancelDeconstruction()
     }
 
     fun toggleGrid(enabled: Boolean) {

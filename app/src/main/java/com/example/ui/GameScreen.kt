@@ -28,6 +28,7 @@ fun GameScreen(
     val tick by viewModel.tickState.collectAsStateWithLifecycle()
     val selectedTool by viewModel.selectedTool.collectAsStateWithLifecycle()
     val conveyorDirection by viewModel.conveyorDirection.collectAsStateWithLifecycle()
+    val isDemolishMode by viewModel.isDemolishMode.collectAsStateWithLifecycle()
     val showGrid by viewModel.showGrid.collectAsStateWithLifecycle()
     val showFlowArrows by viewModel.showFlowArrows.collectAsStateWithLifecycle()
     val soundEnabled by viewModel.soundEnabled.collectAsStateWithLifecycle()
@@ -36,9 +37,10 @@ fun GameScreen(
     var screenHeight by remember { mutableFloatStateOf(2160f) }
 
     val world = viewModel.world
-    val copperCount = world.coreResources[Resource.COPPER] ?: 0
     val blueprintsCount = world.blueprints.size
-    val blueprintsCost = world.getTotalBlueprintCost()
+    val blueprintsCopperCost = world.getTotalBlueprintCopperCost()
+    val blueprintsSilverCost = world.getTotalBlueprintSilverCost()
+    val markedForDemolishCount = world.getMarkedForDeconstructionCount()
 
     Box(
         modifier = modifier
@@ -61,29 +63,46 @@ fun GameScreen(
             showGridLines = showGrid,
             showFlowArrows = showFlowArrows,
             selectedTool = selectedTool,
+            isDemolishMode = isDemolishMode,
+            demolishDragStart = viewModel.demolishDragStart,
+            demolishDragCurrent = viewModel.demolishDragCurrent,
             conveyorDirection = conveyorDirection,
             onTapTile = { x, y -> viewModel.onTapTile(x, y) },
             onDragConveyorSegment = { x, y, dir -> viewModel.onDragConveyorSegment(x, y, dir) },
-            onPanCamera = { dx, dy -> viewModel.onPanCamera(dx, dy) }
+            onPanCamera = { dx, dy -> viewModel.onPanCamera(dx, dy) },
+            onUpdateDemolishDrag = { start, curr ->
+                viewModel.demolishDragStart = start
+                viewModel.demolishDragCurrent = curr
+            },
+            onDemolishAreaSelected = { x1, y1, x2, y2 ->
+                viewModel.onDemolishAreaSelected(x1, y1, x2, y2)
+            },
+            onZoomCentered = { newZoom, _, _ ->
+                viewModel.zoomCentered(newZoom, screenWidth, screenHeight)
+            }
         )
 
         // Render HUD
         GameHud(
-            copperCount = copperCount,
+            coreResources = world.coreResources,
             droneState = world.drone.state,
-            constructionQueueCount = world.constructionQueue.size,
             blueprintsCount = blueprintsCount,
-            blueprintsCost = blueprintsCost,
+            blueprintsCopperCost = blueprintsCopperCost,
+            blueprintsSilverCost = blueprintsSilverCost,
+            markedForDemolishCount = markedForDemolishCount,
             selectedTool = selectedTool,
+            isDemolishMode = isDemolishMode,
             conveyorDirection = conveyorDirection,
             onSelectTool = { viewModel.selectTool(it) },
+            onToggleDemolishMode = { viewModel.toggleDemolishMode() },
             onRotateConveyor = { viewModel.rotateConveyor() },
             onConfirmBlueprints = { viewModel.confirmBlueprints() },
             onCancelBlueprints = { viewModel.cancelBlueprints() },
+            onConfirmDemolish = { viewModel.confirmDemolish() },
+            onCancelDemolish = { viewModel.cancelDemolish() },
             onCenterOnCore = { viewModel.centerOnCore(screenWidth, screenHeight) },
-            onZoomIn = { viewModel.onZoomIn() },
-            onZoomOut = { viewModel.onZoomOut() },
-            onPanBy = { dx, dy -> viewModel.onPanCamera(dx, dy) },
+            onZoomIn = { viewModel.onZoomIn(screenWidth, screenHeight) },
+            onZoomOut = { viewModel.onZoomOut(screenWidth, screenHeight) },
             onOpenSettings = { showInGameSettings = true }
         )
 

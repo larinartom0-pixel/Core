@@ -30,6 +30,27 @@ enum class TileType(
         baseColor = Color(0xFF2E2C2A),
         accentColor = Color(0xFFD97706)
     ),
+    LEAD_ORE(
+        displayName = "Жила свинцю",
+        isSolid = false,
+        resourceDrop = Resource.LEAD,
+        baseColor = Color(0xFF252230),
+        accentColor = Color(0xFF8B5CF6)
+    ),
+    COAL_ORE(
+        displayName = "Поклади вугілля",
+        isSolid = false,
+        resourceDrop = Resource.COAL,
+        baseColor = Color(0xFF181B20),
+        accentColor = Color(0xFF334155)
+    ),
+    SILVER_ORE(
+        displayName = "Срібна жила",
+        isSolid = false,
+        resourceDrop = Resource.SILVER,
+        baseColor = Color(0xFF252C36),
+        accentColor = Color(0xFFE2E8F0)
+    ),
     SCRAP_DEPOSIT(
         displayName = "Поклади брухту",
         isSolid = false,

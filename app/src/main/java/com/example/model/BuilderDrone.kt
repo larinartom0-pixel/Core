@@ -4,6 +4,8 @@ enum class DroneState {
     IDLE_AT_CORE,
     FLYING_TO_BUILD,
     BUILDING,
+    FLYING_TO_DECONSTRUCT,
+    DECONSTRUCTING,
     RETURNING_TO_CORE
 }
 
@@ -17,5 +19,6 @@ data class BuilderDrone(
     var laserBeamX: Float = posX,
     var laserBeamY: Float = posY,
     var isFiringLaser: Boolean = false,
+    var isDeconstructing: Boolean = false,
     var idleAngle: Float = 0f
 )
