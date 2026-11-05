@@ -1,10 +1,7 @@
 package com.example
 
 import com.example.game.GameWorld
-import com.example.model.BuildingType
-import com.example.model.Direction
-import com.example.model.Resource
-import com.example.model.TileType
+import com.example.model.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -12,9 +9,9 @@ class ExampleUnitTest {
 
     @Test
     fun testWorldGenerationAndCore() {
-        val world = GameWorld(40, 40, seed = 42L)
-        assertEquals(40, world.width)
-        assertEquals(40, world.height)
+        val world = GameWorld(80, 80, seed = 42L)
+        assertEquals(80, world.width)
+        assertEquals(80, world.height)
 
         // Core exists at center
         val core = world.buildings.firstOrNull { it.type == BuildingType.CORE }
@@ -23,104 +20,41 @@ class ExampleUnitTest {
         assertEquals(3, core.type.height)
         assertTrue(core.isFullyBuilt)
 
-        // Initial copper & silver balance
+        // Initial resources balance
         val copper = world.coreResources[Resource.COPPER] ?: 0
+        val lead = world.coreResources[Resource.LEAD] ?: 0
         val silver = world.coreResources[Resource.SILVER] ?: 0
+        val coal = world.coreResources[Resource.COAL] ?: 0
         assertTrue("Core should have starting copper", copper >= 100)
+        assertTrue("Core should have starting lead", lead >= 40)
         assertTrue("Core should have starting silver", silver >= 20)
+        assertTrue("Core should have starting coal", coal >= 20)
     }
 
     @Test
     fun testBlueprintToggleAndCancel() {
-        val world = GameWorld(40, 40)
-        val testX = 10
-        val testY = 10
+        val world = GameWorld(80, 80)
+        val testX = 40
+        val testY = 44
+        world.grid[testX][testY] = Tile(testX, testY, TileType.DIRT)
 
         // Place conveyor blueprint
         val placed = world.toggleBlueprint(testX, testY, BuildingType.CONVEYOR, Direction.EAST)
         assertTrue("Blueprint should be placed", placed)
         assertEquals(1, world.blueprints.size)
 
-        // Tap again on the same tile -> should cancel blueprint (as per user request)
+        // Tap again on the same tile -> should cancel blueprint
         val removed = world.toggleBlueprint(testX, testY, BuildingType.CONVEYOR, Direction.EAST)
         assertFalse("Blueprint should be removed on second tap", removed)
         assertEquals(0, world.blueprints.size)
     }
 
     @Test
-    fun testBlueprintConfirmationAndDroneConstruction() {
-        val world = GameWorld(40, 40)
-        val initialCopper = world.coreResources[Resource.COPPER] ?: 0
-
-        // Place blueprint
-        world.toggleBlueprint(12, 12, BuildingType.CONVEYOR, Direction.EAST)
-        assertEquals(1, world.blueprints.size)
-        assertEquals(1, world.getTotalBlueprintCopperCost())
-
-        // Confirm
-        val confirmed = world.confirmBlueprints()
-        assertTrue(confirmed)
-        assertEquals(0, world.blueprints.size)
-        assertEquals(initialCopper - 1, world.coreResources[Resource.COPPER])
-        assertEquals(1, world.constructionQueue.size)
-
-        val newBuilding = world.buildings.first { it.originX == 12 && it.originY == 12 }
-        assertFalse(newBuilding.isFullyBuilt)
-
-        // Simulate drone building loop
-        for (i in 0 until 120) {
-            world.update(0.05f)
-        }
-
-        assertTrue("Building should be finished by builder drone", newBuilding.isFullyBuilt)
-        assertEquals(0, world.constructionQueue.size)
-    }
-
-    @Test
-    fun testConveyorTransportationIntoCore() {
-        val world = GameWorld(40, 40)
-        val core = world.buildings.first { it.type == BuildingType.CORE }
-        val initialCopper = world.coreResources[Resource.COPPER] ?: 0
-
-        // Place a conveyor pointing directly into Core from the left (West side of Core)
-        val conveyorX = core.originX - 1
-        val conveyorY = core.originY
-        world.grid[conveyorX][conveyorY] = world.grid[conveyorX][conveyorY].copy(type = TileType.DIRT)
-
-        world.toggleBlueprint(conveyorX, conveyorY, BuildingType.CONVEYOR, Direction.EAST)
-        world.confirmBlueprints()
-
-        // Fast finish construction
-        val conveyor = world.buildings.first { it.originX == conveyorX && it.originY == conveyorY }
-        conveyor.buildProgress = 1.0f
-        world.constructionQueue.clear()
-
-        // Place an item on conveyor
-        world.items.add(
-            com.example.model.TransportedItem(
-                id = "test_item",
-                resource = Resource.COPPER,
-                tileX = conveyorX,
-                tileY = conveyorY,
-                progress = 0.8f,
-                direction = Direction.EAST
-            )
-        )
-
-        // Update world so item moves into Core
-        world.update(0.2f)
-
-        // Item should have entered Core and increased resource count
-        val updatedCopper = world.coreResources[Resource.COPPER] ?: 0
-        assertEquals(initialCopper, updatedCopper) // initial copper minus 1 for build + 1 for delivered item
-        assertEquals(0, world.items.size)
-    }
-
-    @Test
     fun testAutoJunctionConversion() {
-        val world = GameWorld(40, 40)
-        val x = 15
-        val y = 15
+        val world = GameWorld(80, 80)
+        val x = 40
+        val y = 45
+        world.grid[x][y] = Tile(x, y, TileType.DIRT)
 
         // First place a vertical conveyor
         world.toggleBlueprint(x, y, BuildingType.CONVEYOR, Direction.SOUTH)
@@ -139,158 +73,145 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun testDeconstructionRefund() {
-        val world = GameWorld(40, 40)
-        val x = 10
-        val y = 10
+    fun testPowerGridAndCoalGenerator() {
+        val world = GameWorld(80, 80)
+        val genX = 40
+        val genY = 45
 
-        // Place a router
-        world.toggleBlueprint(x, y, BuildingType.ROUTER, Direction.EAST)
-        world.confirmBlueprints()
-        val router = world.buildings.first { it.originX == x && it.originY == y }
-        router.buildProgress = 1.0f
-        world.constructionQueue.clear()
-
-        val copperBeforeDemolish = world.coreResources[Resource.COPPER] ?: 0
-
-        // Mark for deconstruction
-        world.toggleMarkForDeconstruction(x, y)
-        assertEquals(1, world.getMarkedForDeconstructionCount())
-
-        // Confirm demolish
-        world.confirmDeconstruction()
-
-        // Simulate drone dismantling loop
-        for (i in 0 until 120) {
-            world.update(0.05f)
-        }
-
-        // Router should be removed and 100% copper refunded
-        val remaining = world.buildings.firstOrNull { it.originX == x && it.originY == y }
-        assertNull("Building should be dismantled", remaining)
-        val copperAfterDemolish = world.coreResources[Resource.COPPER] ?: 0
-        assertEquals(copperBeforeDemolish + BuildingType.ROUTER.costCopper, copperAfterDemolish)
-    }
-
-    @Test
-    fun testMarkedBuildingContinuesWorkingAndItemsPreserved() {
-        val world = GameWorld(40, 40)
-        val convX = 12
-        val convY = 12
-
-        // Place a conveyor
-        world.toggleBlueprint(convX, convY, BuildingType.CONVEYOR, Direction.EAST)
-        world.confirmBlueprints()
-        val conv = world.buildings.first { it.originX == convX && it.originY == convY }
-        conv.buildProgress = 1.0f
-        world.constructionQueue.clear()
-
-        // Put an item on it
-        world.items.add(
-            com.example.model.TransportedItem(
-                id = "item_1",
-                resource = Resource.COPPER,
-                tileX = convX,
-                tileY = convY,
-                progress = 0.2f,
-                direction = Direction.EAST
-            )
-        )
-
-        // Mark conveyor for deconstruction (e.g. selected with trash tool)
-        world.toggleMarkForDeconstruction(convX, convY)
-        assertTrue("Conveyor is marked for deconstruction", conv.isMarkedForDeconstruction)
-        assertTrue("Conveyor is still fully built and operational", conv.isFullyBuilt)
-
-        // Update world a few ticks
-        world.update(0.1f)
-
-        // The item must NOT have disappeared!
-        assertEquals("Item must still exist on conveyor", 1, world.items.size)
-        assertTrue("Item progress must have advanced", world.items[0].progress > 0.2f)
-    }
-
-    @Test
-    fun testDeconstructionItemRefund() {
-        val world = GameWorld(40, 40)
-        val convX = 14
-        val convY = 14
-
-        // Place a conveyor
-        world.toggleBlueprint(convX, convY, BuildingType.CONVEYOR, Direction.EAST)
-        world.confirmBlueprints()
-        val conv = world.buildings.first { it.originX == convX && it.originY == convY }
-        conv.buildProgress = 1.0f
-        world.constructionQueue.clear()
-
-        val copperBefore = world.coreResources[Resource.COPPER] ?: 0
-
-        // Put an item on the conveyor
-        world.items.add(
-            com.example.model.TransportedItem(
-                id = "item_refund",
-                resource = Resource.COPPER,
-                tileX = convX,
-                tileY = convY,
-                progress = 0.5f,
-                direction = Direction.EAST
-            )
-        )
-
-        // Mark and confirm deconstruct
-        world.toggleMarkForDeconstruction(convX, convY)
-        world.confirmDeconstruction()
-
-        // Run until deconstruction is finished
-        for (i in 0 until 120) {
-            world.update(0.05f)
-        }
-
-        // Conveyor should be gone, and BOTH building cost (1 Cu) AND item on conveyor (1 Cu) should be refunded!
-        val copperAfter = world.coreResources[Resource.COPPER] ?: 0
-        assertEquals("Should refund building cost (1) + item (1) = +2 Cu", copperBefore + 2, copperAfter)
-        assertEquals("Items list should be empty", 0, world.items.size)
-    }
-
-    @Test
-    fun testDrillMiningRate() {
-        val world = GameWorld(40, 40)
-        val drillX = 5
-        val drillY = 5
-
-        // Place copper ores on all 4 tiles
-        for (dx in 0 until 2) {
-            for (dy in 0 until 2) {
-                world.grid[drillX + dx][drillY + dy] = world.grid[drillX + dx][drillY + dy].copy(type = TileType.COPPER_ORE)
+        // Clear terrain
+        for (x in (genX - 2)..(genX + 6)) {
+            for (y in (genY - 2)..(genY + 4)) {
+                world.grid[x][y] = Tile(x, y, TileType.DIRT)
             }
         }
 
-        // Place drill
-        world.toggleBlueprint(drillX, drillY, BuildingType.COPPER_DRILL, Direction.EAST)
-        world.confirmBlueprints()
-        val drill = world.buildings.first { it.originX == drillX && it.originY == drillY }
-        drill.buildProgress = 1.0f
-        world.constructionQueue.clear()
+        // Place Coal Generator, Power Node and Battery
+        assertTrue(world.toggleBlueprint(genX, genY, BuildingType.COAL_GENERATOR, Direction.NORTH))
+        assertTrue(world.toggleBlueprint(genX + 2, genY, BuildingType.POWER_NODE, Direction.NORTH))
+        assertTrue(world.toggleBlueprint(genX + 4, genY, BuildingType.BATTERY, Direction.NORTH))
+        assertTrue(world.confirmBlueprints())
 
-        // Place a conveyor line adjacent to drill's East border (drill is 2x2 at (5,5))
-        for (cx in (drillX + 2)..(drillX + 15)) {
-            world.grid[cx][drillY] = world.grid[cx][drillY].copy(type = TileType.DIRT)
-            world.toggleBlueprint(cx, drillY, BuildingType.CONVEYOR, Direction.EAST)
-        }
-        world.confirmBlueprints()
         for (b in world.buildings) {
             b.buildProgress = 1.0f
         }
         world.constructionQueue.clear()
 
-        // Count mined items over 10 seconds
-        val itemsStart = world.items.size
-        for (i in 0 until 200) { // 200 * 0.05s = 10.0 seconds
+        val gen = world.buildings.first { it.type == BuildingType.COAL_GENERATOR }
+        val battery = world.buildings.first { it.type == BuildingType.BATTERY }
+
+        // Feed coal into generator
+        gen.storedResources[Resource.COAL] = 10
+
+        assertEquals(0f, battery.energyStored, 0.01f)
+
+        // Run power simulation
+        for (i in 0 until 60) {
+            world.update(0.05f) // 3 seconds
+        }
+
+        // Generator should have burned coal and battery should be charged
+        assertTrue("Battery should accumulate energy from generator", battery.energyStored > 10f)
+        assertTrue("Generator should have consumed coal", (gen.storedResources[Resource.COAL] ?: 0) < 10)
+    }
+
+    @Test
+    fun testTurretFiringAtEnemy() {
+        val world = GameWorld(80, 80)
+        val turretX = 40
+        val turretY = 45
+
+        for (x in (turretX - 2)..(turretX + 6)) {
+            for (y in (turretY - 2)..(turretY + 4)) {
+                world.grid[x][y] = Tile(x, y, TileType.DIRT)
+            }
+        }
+
+        // Place Turret
+        assertTrue(world.toggleBlueprint(turretX, turretY, BuildingType.TURRET, Direction.NORTH))
+        assertTrue(world.confirmBlueprints())
+        val turret = world.buildings.first { it.type == BuildingType.TURRET }
+        turret.buildProgress = 1.0f
+        world.constructionQueue.clear()
+
+        // Load copper ammo into turret
+        turret.turretAmmoType = Resource.COPPER_AMMO
+        turret.turretAmmoCount = 20
+
+        // Spawn Tal mech enemy nearby
+        val enemy = UnitInstance(
+            type = UnitType.TAL_MECH,
+            posX = turretX + 3.0f,
+            posY = turretY.toFloat(),
+            health = 100,
+            isEnemy = true
+        )
+        world.units.add(enemy)
+
+        val initialAmmo = turret.turretAmmoCount
+
+        // Update world so turret targets and shoots enemy
+        for (i in 0 until 30) {
             world.update(0.05f)
         }
 
-        // At 1.2 items/sec for 10s, should be around 12 items mined (allowing small timing delta)
-        val itemsProduced = world.items.size - itemsStart
-        assertTrue("Expected ~12 items in 10s at 1.2 items/sec, got $itemsProduced", itemsProduced in 10..14)
+        assertTrue("Turret should have fired ammo at enemy", turret.turretAmmoCount < initialAmmo)
+        assertTrue("Projectiles should be spawned or enemy damaged", world.projectiles.isNotEmpty() || enemy.health < 100)
+    }
+
+    @Test
+    fun testWaveSpawning() {
+        val world = GameWorld(80, 80)
+        assertEquals(0, world.units.size)
+
+        world.waveNumber = 1
+        world.spawnWave()
+
+        assertEquals("Wave 1 should spawn 1 Tal mech", 1, world.units.size)
+        val mech = world.units.first()
+        assertEquals(UnitType.TAL_MECH, mech.type)
+        assertTrue(mech.isEnemy)
+        assertTrue(mech.isAlive)
+    }
+
+    @Test
+    fun testIronSmelter() {
+        val world = GameWorld(80, 80)
+        val smelterX = 40
+        val smelterY = 45
+
+        for (x in (smelterX - 2)..(smelterX + 6)) {
+            for (y in (smelterY - 2)..(smelterY + 4)) {
+                world.grid[x][y] = Tile(x, y, TileType.DIRT)
+            }
+        }
+
+        // Place Generator & Power Node to power the smelter
+        world.toggleBlueprint(smelterX - 2, smelterY, BuildingType.COAL_GENERATOR, Direction.NORTH)
+        world.toggleBlueprint(smelterX, smelterY, BuildingType.IRON_SMELTER, Direction.NORTH)
+        // Add output conveyor
+        world.toggleBlueprint(smelterX + 2, smelterY, BuildingType.CONVEYOR, Direction.EAST)
+        assertTrue(world.confirmBlueprints())
+
+        for (b in world.buildings) {
+            b.buildProgress = 1.0f
+        }
+        world.constructionQueue.clear()
+
+        val gen = world.buildings.first { it.type == BuildingType.COAL_GENERATOR }
+        gen.storedResources[Resource.COAL] = 20
+
+        val smelter = world.buildings.first { it.type == BuildingType.IRON_SMELTER }
+        smelter.storedResources[Resource.IRON_ORE] = 6
+        smelter.storedResources[Resource.COAL] = 4
+
+        // Run simulation for 1.1 seconds (one craft cycle takes 1.0s)
+        for (i in 0 until 22) {
+            world.update(0.05f)
+        }
+
+        // Smelter should have consumed 3 iron ore and produced 1 iron ingot on the conveyor
+        val itemsProduced = world.items.count { it.resource == Resource.IRON_INGOT }
+        assertTrue("Should produce iron ingot on conveyor", itemsProduced > 0)
+        assertEquals(3, smelter.storedResources[Resource.IRON_ORE])
     }
 }

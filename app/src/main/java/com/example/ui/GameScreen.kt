@@ -29,12 +29,18 @@ fun GameScreen(
     val coreResources by viewModel.coreResources.collectAsStateWithLifecycle()
     val blueprintsCount by viewModel.blueprintsCount.collectAsStateWithLifecycle()
     val blueprintsCopperCost by viewModel.blueprintsCopperCost.collectAsStateWithLifecycle()
+    val blueprintsLeadCost by viewModel.blueprintsLeadCost.collectAsStateWithLifecycle()
     val blueprintsSilverCost by viewModel.blueprintsSilverCost.collectAsStateWithLifecycle()
+    val blueprintsIronCost by viewModel.blueprintsIronCost.collectAsStateWithLifecycle()
     val markedForDemolishCount by viewModel.markedForDemolishCount.collectAsStateWithLifecycle()
     val droneState by viewModel.droneState.collectAsStateWithLifecycle()
+    val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val selectedTool by viewModel.selectedTool.collectAsStateWithLifecycle()
     val conveyorDirection by viewModel.conveyorDirection.collectAsStateWithLifecycle()
+    val fabricatorRecipe by viewModel.fabricatorRecipe.collectAsStateWithLifecycle()
     val isDemolishMode by viewModel.isDemolishMode.collectAsStateWithLifecycle()
+    val waveNumber by viewModel.waveNumber.collectAsStateWithLifecycle()
+    val waveCountdownSeconds by viewModel.waveCountdownSeconds.collectAsStateWithLifecycle()
     val showGrid by viewModel.showGrid.collectAsStateWithLifecycle()
     val showFlowArrows by viewModel.showFlowArrows.collectAsStateWithLifecycle()
     val soundEnabled by viewModel.soundEnabled.collectAsStateWithLifecycle()
@@ -90,11 +96,24 @@ fun GameScreen(
             droneState = droneState,
             blueprintsCount = blueprintsCount,
             blueprintsCopperCost = blueprintsCopperCost,
+            blueprintsLeadCost = blueprintsLeadCost,
             blueprintsSilverCost = blueprintsSilverCost,
+            blueprintsIronCost = blueprintsIronCost,
             markedForDemolishCount = markedForDemolishCount,
             selectedTool = selectedTool,
             isDemolishMode = isDemolishMode,
             conveyorDirection = conveyorDirection,
+            selectedCategory = selectedCategory,
+            fabricatorRecipe = fabricatorRecipe,
+            waveNumber = waveNumber,
+            waveCountdownSeconds = waveCountdownSeconds,
+            world = world,
+            cameraOffsetX = viewModel.cameraOffsetX,
+            cameraOffsetY = viewModel.cameraOffsetY,
+            zoom = viewModel.zoom,
+            screenWidth = screenWidth,
+            screenHeight = screenHeight,
+            onSelectCategory = { viewModel.selectCategory(it) },
             onSelectTool = { viewModel.selectTool(it) },
             onToggleDemolishMode = { viewModel.toggleDemolishMode() },
             onRotateConveyor = { viewModel.rotateConveyor() },
@@ -102,6 +121,8 @@ fun GameScreen(
             onCancelBlueprints = { viewModel.cancelBlueprints() },
             onConfirmDemolish = { viewModel.confirmDemolish() },
             onCancelDemolish = { viewModel.cancelDemolish() },
+            onSelectFabricatorRecipe = { viewModel.setFabricatorRecipe(it) },
+            onMiniMapTap = { wx, wy -> viewModel.panCameraTo(wx, wy, screenWidth, screenHeight) },
             onCenterOnCore = { viewModel.centerOnCore(screenWidth, screenHeight) },
             onZoomIn = { viewModel.onZoomIn(screenWidth, screenHeight) },
             onZoomOut = { viewModel.onZoomOut(screenWidth, screenHeight) },

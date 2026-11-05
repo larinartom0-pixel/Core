@@ -18,19 +18,43 @@ enum class Resource(
         id = "lead",
         displayName = "Свинець",
         color = Color(0xFF8B5CF6),
-        description = "Важкий метал, використовується для електроніки та захисних систем."
+        description = "Важкий метал, використовується для електроніки, турелей та акумуляторів."
     ),
     COAL(
         id = "coal",
         displayName = "Вугілля",
-        color = Color(0xFF334155),
-        description = "Горюче паливо для виробництва енергії та металургії."
+        color = Color(0xFF475569),
+        description = "Горюче паливо для виробництва електроенергії та виплавки заліза."
     ),
     SILVER(
         id = "silver",
         displayName = "Срібло",
         color = Color(0xFFE2E8F0),
-        description = "Високопровідний благородний метал для передової логістики та перехресть."
+        description = "Високопровідний благородний метал для передової логістики, енерговузлів та патронів."
+    ),
+    IRON_ORE(
+        id = "iron_ore",
+        displayName = "Залізна руда",
+        color = Color(0xFFB45309),
+        description = "Необроблена руда для переплавки у високоміцні залізні злитки."
+    ),
+    IRON_INGOT(
+        id = "iron_ingot",
+        displayName = "Залізний злиток",
+        color = Color(0xFFCBD5E1),
+        description = "Очищений метал для фабрикації передової зброї та складних заводів."
+    ),
+    COPPER_AMMO(
+        id = "copper_ammo",
+        displayName = "Мідні патрони",
+        color = Color(0xFFFB923C),
+        description = "Швидкострільні боєприпаси базового калібру для турелей."
+    ),
+    SILVER_AMMO(
+        id = "silver_ammo",
+        displayName = "Срібні патрони",
+        color = Color(0xFF38BDF8),
+        description = "Посилені енергетично-срібні боєприпаси з високим бронебійним уроном."
     ),
     SCRAP(
         id = "scrap",

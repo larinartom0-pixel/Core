@@ -7,10 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.game.GameWorld
-import com.example.model.BuildingType
-import com.example.model.Direction
-import com.example.model.DroneState
-import com.example.model.Resource
+import com.example.model.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,14 +42,26 @@ class GameViewModel : ViewModel() {
     private val _blueprintsCopperCost = MutableStateFlow(0)
     val blueprintsCopperCost = _blueprintsCopperCost.asStateFlow()
 
+    private val _blueprintsLeadCost = MutableStateFlow(0)
+    val blueprintsLeadCost = _blueprintsLeadCost.asStateFlow()
+
     private val _blueprintsSilverCost = MutableStateFlow(0)
     val blueprintsSilverCost = _blueprintsSilverCost.asStateFlow()
+
+    private val _blueprintsIronCost = MutableStateFlow(0)
+    val blueprintsIronCost = _blueprintsIronCost.asStateFlow()
 
     private val _markedForDemolishCount = MutableStateFlow(0)
     val markedForDemolishCount = _markedForDemolishCount.asStateFlow()
 
     private val _droneState = MutableStateFlow(DroneState.IDLE_AT_CORE)
     val droneState = _droneState.asStateFlow()
+
+    private val _waveNumber = MutableStateFlow(1)
+    val waveNumber = _waveNumber.asStateFlow()
+
+    private val _waveCountdownSeconds = MutableStateFlow(180f)
+    val waveCountdownSeconds = _waveCountdownSeconds.asStateFlow()
 
     // Camera (Reactive Compose States)
     var cameraOffsetX by mutableFloatStateOf(0f)
@@ -62,12 +71,18 @@ class GameViewModel : ViewModel() {
     var zoom by mutableFloatStateOf(1.0f)
         private set
 
-    // Tool selection
+    // Tool & Category selection
+    private val _selectedCategory = MutableStateFlow(BuildingCategory.LOGISTICS)
+    val selectedCategory = _selectedCategory.asStateFlow()
+
     private val _selectedTool = MutableStateFlow<BuildingType?>(null)
     val selectedTool = _selectedTool.asStateFlow()
 
     private val _conveyorDirection = MutableStateFlow(Direction.EAST)
     val conveyorDirection = _conveyorDirection.asStateFlow()
+
+    private val _fabricatorRecipe = MutableStateFlow("copper")
+    val fabricatorRecipe = _fabricatorRecipe.asStateFlow()
 
     // Demolish / Deconstruction tool
     private val _isDemolishMode = MutableStateFlow(false)
@@ -98,6 +113,8 @@ class GameViewModel : ViewModel() {
         _selectedTool.value = null
         _isDemolishMode.value = false
         _conveyorDirection.value = Direction.EAST
+        _selectedCategory.value = BuildingCategory.LOGISTICS
+        _fabricatorRecipe.value = "copper"
         syncHudState()
         centerOnCore(1080f, 2160f)
         _currentScreen.value = AppScreen.IN_GAME
@@ -113,9 +130,13 @@ class GameViewModel : ViewModel() {
         _coreResources.value = _world.coreResources.toMap()
         _blueprintsCount.value = _world.blueprints.size
         _blueprintsCopperCost.value = _world.getTotalBlueprintCopperCost()
+        _blueprintsLeadCost.value = _world.getTotalBlueprintLeadCost()
         _blueprintsSilverCost.value = _world.getTotalBlueprintSilverCost()
+        _blueprintsIronCost.value = _world.getTotalBlueprintIronCost()
         _markedForDemolishCount.value = _world.getMarkedForDeconstructionCount()
         _droneState.value = _world.drone.state
+        _waveNumber.value = _world.waveNumber
+        _waveCountdownSeconds.value = _world.waveCountdownSeconds
     }
 
     private fun startGameLoop() {
@@ -137,7 +158,9 @@ class GameViewModel : ViewModel() {
                 if (_blueprintsCount.value != _world.blueprints.size) {
                     _blueprintsCount.value = _world.blueprints.size
                     _blueprintsCopperCost.value = _world.getTotalBlueprintCopperCost()
+                    _blueprintsLeadCost.value = _world.getTotalBlueprintLeadCost()
                     _blueprintsSilverCost.value = _world.getTotalBlueprintSilverCost()
+                    _blueprintsIronCost.value = _world.getTotalBlueprintIronCost()
                 }
                 val demCount = _world.getMarkedForDeconstructionCount()
                 if (_markedForDemolishCount.value != demCount) {
@@ -146,6 +169,10 @@ class GameViewModel : ViewModel() {
                 if (_droneState.value != _world.drone.state) {
                     _droneState.value = _world.drone.state
                 }
+                if (_waveNumber.value != _world.waveNumber) {
+                    _waveNumber.value = _world.waveNumber
+                }
+                _waveCountdownSeconds.value = _world.waveCountdownSeconds
 
                 delay(16L) // ~60 FPS
             }
@@ -155,6 +182,12 @@ class GameViewModel : ViewModel() {
     fun onPanCamera(dx: Float, dy: Float) {
         cameraOffsetX += dx
         cameraOffsetY += dy
+    }
+
+    fun panCameraTo(worldX: Float, worldY: Float, screenWidth: Float, screenHeight: Float) {
+        val tileSize = 48f * zoom
+        cameraOffsetX = screenWidth / 2f - worldX * tileSize
+        cameraOffsetY = screenHeight / 2f - worldY * tileSize
     }
 
     /**
@@ -169,20 +202,18 @@ class GameViewModel : ViewModel() {
     }
 
     fun zoomCentered(newZoom: Float, screenWidth: Float, screenHeight: Float) {
-        val clampedZoom = newZoom.coerceIn(0.5f, 3.0f)
+        val clampedZoom = newZoom.coerceIn(0.4f, 3.0f)
         if (clampedZoom == zoom) return
 
         val baseTileSize = 48f
         val centerX = screenWidth / 2f
         val centerY = screenHeight / 2f
 
-        // World coordinate currently at screen center
         val worldX = (centerX - cameraOffsetX) / (baseTileSize * zoom)
         val worldY = (centerY - cameraOffsetY) / (baseTileSize * zoom)
 
         zoom = clampedZoom
 
-        // Adjust offsets so world point remains at center
         cameraOffsetX = centerX - worldX * (baseTileSize * zoom)
         cameraOffsetY = centerY - worldY * (baseTileSize * zoom)
     }
@@ -195,10 +226,25 @@ class GameViewModel : ViewModel() {
         cameraOffsetY = screenHeight / 2f - corePxY
     }
 
+    fun selectCategory(category: BuildingCategory) {
+        _selectedCategory.value = category
+        _isDemolishMode.value = false
+    }
+
     fun selectTool(tool: BuildingType?) {
         _selectedTool.value = tool
         if (tool != null) {
             _isDemolishMode.value = false
+            _selectedCategory.value = tool.category
+        }
+    }
+
+    fun setFabricatorRecipe(recipe: String) {
+        _fabricatorRecipe.value = recipe
+        for (b in _world.buildings) {
+            if (b.type == BuildingType.AMMO_FABRICATOR) {
+                b.fabricatorRecipe = recipe
+            }
         }
     }
 

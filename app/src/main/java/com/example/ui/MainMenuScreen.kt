@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -37,11 +40,11 @@ fun MainMenuScreen(
 ) {
     var showSettingsDialog by remember { mutableStateOf(false) }
 
-    // Pulsing core animation
+    // Pulsing and rotation animations
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
-        targetValue = 1.05f,
+        targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
             animation = tween(2200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -52,28 +55,52 @@ fun MainMenuScreen(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(18000, easing = LinearEasing),
+            animation = tween(16000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "rotation"
+    )
+    val bgOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 120f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bgOffset"
     )
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        IndustrialDark,
-                        Color(0xFF131A26),
-                        IndustrialDark
-                    )
-                )
-            )
+            .background(IndustrialDark)
             .statusBarsPadding()
             .navigationBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
+        // Animated Sci-Fi Factory Background Grid
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val step = 60f
+            for (x in 0..(size.width / step).toInt()) {
+                val posX = x * step
+                drawLine(
+                    color = Color(0x0C38BDF8),
+                    start = Offset(posX, 0f),
+                    end = Offset(posX, size.height),
+                    strokeWidth = 1f
+                )
+            }
+            for (y in 0..(size.height / step).toInt()) {
+                val posY = y * step + (bgOffset % step)
+                drawLine(
+                    color = Color(0x0C38BDF8),
+                    start = Offset(0f, posY),
+                    end = Offset(size.width, posY),
+                    strokeWidth = 1f
+                )
+            }
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -81,31 +108,31 @@ fun MainMenuScreen(
                 .padding(24.dp)
                 .widthIn(max = 420.dp)
         ) {
-            // Core Reactor Logo
+            // Core Reactor Animated Logo
             Box(
                 modifier = Modifier
                     .size(130.dp)
                     .scale(pulseScale),
                 contentAlignment = Alignment.Center
             ) {
-                // Outer rotating ring
+                // Outer rotating energy ring
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .rotate(rotation)
                         .border(
-                            width = 2.dp,
+                            width = 2.5.dp,
                             brush = Brush.sweepGradient(
-                                listOf(CoreCyan, CopperAmber, CoreCyan)
+                                listOf(CoreCyan, CopperAmber, Color(0xFF8B5CF6), CoreCyan)
                             ),
                             shape = CircleShape
                         )
                 )
 
-                // Inner core
+                // Inner core reactor
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(82.dp)
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
@@ -118,11 +145,11 @@ fun MainMenuScreen(
                     imageVector = Icons.Default.PrecisionManufacturing,
                     contentDescription = null,
                     tint = IndustrialDark,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(40.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Title
             Text(
@@ -142,24 +169,19 @@ fun MainMenuScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Subtitle badge
-            Surface(
-                color = IndustrialCard,
-                shape = RoundedCornerShape(8.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, IndustrialBorder)
+            // Feature Badges
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Індустріальна автоматизація • v1.0",
-                    color = SlateDim,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                )
+                FeatureBadge("80x80 Карта", CoreCyan)
+                FeatureBadge("Енергомережа", Color(0xFFFBBF24))
+                FeatureBadge("Хвилі ворогів", Color(0xFFEF4444))
             }
 
-            Spacer(modifier = Modifier.height(44.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             // Play Button
             Button(
@@ -181,14 +203,14 @@ fun MainMenuScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "ГРАТИ",
+                    text = "НОВА ГРА",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Settings Button
             OutlinedButton(
@@ -200,7 +222,7 @@ fun MainMenuScreen(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(52.dp)
                     .testTag("main_settings_btn")
             ) {
                 Icon(
@@ -229,6 +251,23 @@ fun MainMenuScreen(
             onToggleSound = onToggleSound,
             onDismiss = { showSettingsDialog = false },
             onExitToMainMenu = { showSettingsDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun FeatureBadge(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = color.copy(alpha = 0.15f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.4f))
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
 }

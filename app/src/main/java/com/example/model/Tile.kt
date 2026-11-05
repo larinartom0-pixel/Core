@@ -51,6 +51,13 @@ enum class TileType(
         baseColor = Color(0xFF252C36),
         accentColor = Color(0xFFE2E8F0)
     ),
+    IRON_ORE(
+        displayName = "Залізна жила",
+        isSolid = false,
+        resourceDrop = Resource.IRON_ORE,
+        baseColor = Color(0xFF2C2420),
+        accentColor = Color(0xFFB45309)
+    ),
     SCRAP_DEPOSIT(
         displayName = "Поклади брухту",
         isSolid = false,
