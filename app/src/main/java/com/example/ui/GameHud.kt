@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.example.game.GameWorld
 import com.example.model.*
 import com.example.ui.theme.*
+import kotlinx.coroutines.isActive
 import kotlin.math.max
 
 @Composable
@@ -725,6 +726,15 @@ private fun MiniMap(
     onTapCoordinates: (Float, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var miniMapFrame by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            withFrameNanos { frameNanos ->
+                miniMapFrame = frameNanos
+            }
+        }
+    }
+
     Canvas(
         modifier = modifier.pointerInput(world.width, world.height) {
             detectTapGestures { offset ->
@@ -734,6 +744,9 @@ private fun MiniMap(
             }
         }
     ) {
+        @Suppress("UNUSED_VARIABLE")
+        val _frame = miniMapFrame
+
         val mapW = size.width
         val mapH = size.height
 

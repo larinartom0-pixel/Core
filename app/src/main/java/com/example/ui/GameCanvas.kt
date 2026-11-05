@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import com.example.game.GameWorld
 import com.example.model.*
+import kotlinx.coroutines.isActive
 import kotlin.math.*
 
 @Composable
@@ -66,6 +67,16 @@ fun GameCanvas(
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
             setShadowLayer(4f, 1f, 1f, android.graphics.Color.BLACK)
+        }
+    }
+
+    // Continuous VSYNC render loop so the canvas updates at 60/120 FPS even when idle
+    var frameTick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            withFrameNanos { frameNanos ->
+                frameTick = frameNanos
+            }
         }
     }
 
@@ -169,6 +180,12 @@ fun GameCanvas(
                 }
             }
     ) {
+        // Read frameTick in DrawScope so Compose invalidates and redraws on every display VSYNC frame during idle
+        @Suppress("UNUSED_VARIABLE")
+        val _activeFrame = frameTick
+        @Suppress("UNUSED_VARIABLE")
+        val _externalTick = tick
+
         val currentTileSize = baseTileSize * zoom
         val visibleWidth = size.width
         val visibleHeight = size.height
