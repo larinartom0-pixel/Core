@@ -214,4 +214,29 @@ class ExampleUnitTest {
         assertTrue("Should produce iron ingot on conveyor", itemsProduced > 0)
         assertEquals(3, smelter.storedResources[Resource.IRON_ORE])
     }
+
+    @Test
+    fun testConveyorDragLineOrientation() {
+        val world = GameWorld(80, 80)
+        for (x in 18..25) {
+            for (y in 18..25) {
+                world.grid[x][y] = Tile(x, y, TileType.DIRT)
+            }
+        }
+
+        // Simulate conveyor drag from (20, 20) to (21, 20)
+        val dX = 21 - 20
+        val dY = 20 - 20
+        val dir = Direction.fromDelta(dX, dY)
+        world.addConveyorAt(20, 20, dir)
+        world.addConveyorAt(21, 20, dir)
+
+        val firstBp = world.blueprints.firstOrNull { it.originX == 20 && it.originY == 20 }
+        val secondBp = world.blueprints.firstOrNull { it.originX == 21 && it.originY == 20 }
+
+        assertNotNull("First conveyor blueprint should exist", firstBp)
+        assertNotNull("Second conveyor blueprint should exist", secondBp)
+        assertEquals(Direction.EAST, firstBp!!.direction)
+        assertEquals(Direction.EAST, secondBp!!.direction)
+    }
 }

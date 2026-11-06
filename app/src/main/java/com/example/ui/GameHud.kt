@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,8 +71,8 @@ fun GameHud(
     onSelectFabricatorRecipe: (String) -> Unit,
     onMiniMapTap: (Float, Float) -> Unit,
     onCenterOnCore: () -> Unit,
-    onZoomIn: () -> Unit,
-    onZoomOut: () -> Unit,
+    onZoomIn: () -> Unit = {},
+    onZoomOut: () -> Unit = {},
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -79,6 +80,7 @@ fun GameHud(
     val leadCount = coreResources[Resource.LEAD] ?: 0
     val coalCount = coreResources[Resource.COAL] ?: 0
     val silverCount = coreResources[Resource.SILVER] ?: 0
+    val ironOreCount = coreResources[Resource.IRON_ORE] ?: 0
     val ironIngotCount = coreResources[Resource.IRON_INGOT] ?: 0
     val copperAmmoCount = coreResources[Resource.COPPER_AMMO] ?: 0
     val silverAmmoCount = coreResources[Resource.SILVER_AMMO] ?: 0
@@ -101,10 +103,10 @@ fun GameHud(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Multi-Resource Badge Card
+                // Multi-Resource Badge Card with Human-Readable Labels & Icons
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = IndustrialSurface.copy(alpha = 0.92f),
+                    color = IndustrialSurface.copy(alpha = 0.94f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, IndustrialBorder),
                     modifier = Modifier.height(38.dp)
                 ) {
@@ -113,16 +115,19 @@ fun GameHud(
                         modifier = Modifier.padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item { ResourceBadge(label = "Cu", count = copperCount, color = CopperAmber) }
-                        item { ResourceBadge(label = "Pb", count = leadCount, color = Color(0xFF8B5CF6)) }
-                        item { ResourceBadge(label = "C", count = coalCount, color = Color(0xFF94A3B8)) }
-                        item { ResourceBadge(label = "Ag", count = silverCount, color = Color(0xFFE2E8F0)) }
-                        item { ResourceBadge(label = "Fe", count = ironIngotCount, color = Color(0xFFCBD5E1)) }
+                        item { ResourceBadge(resource = Resource.COPPER, label = "Мідь", count = copperCount) }
+                        item { ResourceBadge(resource = Resource.LEAD, label = "Свинець", count = leadCount) }
+                        item { ResourceBadge(resource = Resource.COAL, label = "Вугілля", count = coalCount) }
+                        item { ResourceBadge(resource = Resource.SILVER, label = "Срібло", count = silverCount) }
+                        if (ironOreCount > 0) {
+                            item { ResourceBadge(resource = Resource.IRON_ORE, label = "Залізна руда", count = ironOreCount) }
+                        }
+                        item { ResourceBadge(resource = Resource.IRON_INGOT, label = "Залізні злитки", count = ironIngotCount) }
                         if (copperAmmoCount > 0) {
-                            item { ResourceBadge(label = "Cu-Пат", count = copperAmmoCount, color = Color(0xFFFB923C)) }
+                            item { ResourceBadge(resource = Resource.COPPER_AMMO, label = "Мідні патрони", count = copperAmmoCount) }
                         }
                         if (silverAmmoCount > 0) {
-                            item { ResourceBadge(label = "Ag-Пат", count = silverAmmoCount, color = Color(0xFF38BDF8)) }
+                            item { ResourceBadge(resource = Resource.SILVER_AMMO, label = "Срібні патрони", count = silverAmmoCount) }
                         }
                     }
                 }
@@ -231,45 +236,27 @@ fun GameHud(
             )
         }
 
-        // --- FLOATING CONTROLS: Zoom & Rotate (Left Side) ---
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            IconButton(
-                onClick = onZoomIn,
+        // --- FLOATING CONTROLS: Rotate conveyor (Left Side) ---
+        if (selectedTool == BuildingType.CONVEYOR) {
+            Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .background(IndustrialSurface.copy(alpha = 0.92f), CircleShape)
-                    .border(1.dp, IndustrialBorder, CircleShape)
-                    .testTag("btn_zoom_in")
+                    .align(Alignment.CenterStart)
+                    .padding(start = 8.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Збільшити", tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-
-            IconButton(
-                onClick = onZoomOut,
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(IndustrialSurface.copy(alpha = 0.92f), CircleShape)
-                    .border(1.dp, IndustrialBorder, CircleShape)
-                    .testTag("btn_zoom_out")
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Зменшити", tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-
-            if (selectedTool == BuildingType.CONVEYOR) {
                 IconButton(
                     onClick = onRotateConveyor,
                     modifier = Modifier
-                        .size(38.dp)
-                        .background(IndustrialSurface.copy(alpha = 0.92f), CircleShape)
-                        .border(1.dp, CopperAmber, CircleShape)
+                        .size(42.dp)
+                        .background(IndustrialSurface.copy(alpha = 0.94f), CircleShape)
+                        .border(1.5.dp, CopperAmber, CircleShape)
                         .testTag("btn_rotate_conveyor")
                 ) {
-                    Icon(Icons.Default.RotateRight, contentDescription = "Повернути", tint = CopperAmber, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.RotateRight,
+                        contentDescription = "Повернути конвеєр",
+                        tint = CopperAmber,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
         }
@@ -307,11 +294,15 @@ fun GameHud(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val costParts = buildList {
+                            if (blueprintsCopperCost > 0) add("$blueprintsCopperCost Міді")
+                            if (blueprintsLeadCost > 0) add("$blueprintsLeadCost Свинцю")
+                            if (blueprintsSilverCost > 0) add("$blueprintsSilverCost Срібла")
+                            if (blueprintsIronCost > 0) add("$blueprintsIronCost Заліза")
+                        }
+                        val costText = if (costParts.isNotEmpty()) costParts.joinToString(", ") else "0"
                         Text(
-                            text = "Креслень: $blueprintsCount | Вартість: ${blueprintsCopperCost}Cu" +
-                                    (if (blueprintsLeadCost > 0) " ${blueprintsLeadCost}Pb" else "") +
-                                    (if (blueprintsSilverCost > 0) " ${blueprintsSilverCost}Ag" else "") +
-                                    (if (blueprintsIronCost > 0) " ${blueprintsIronCost}Fe" else ""),
+                            text = "Креслень: $blueprintsCount | Вартість: $costText",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -626,10 +617,11 @@ private fun CompactBuildingInfoCard(
                     )
 
                     // Resource costs chips
-                    if (buildingType.costCopper > 0) CostChip("${buildingType.costCopper}Cu", CopperAmber)
-                    if (buildingType.costLead > 0) CostChip("${buildingType.costLead}Pb", Color(0xFF8B5CF6))
-                    if (buildingType.costSilver > 0) CostChip("${buildingType.costSilver}Ag", Color(0xFFE2E8F0))
-                    if (buildingType.costIronIngot > 0) CostChip("${buildingType.costIronIngot}Fe", Color(0xFFCBD5E1))
+                    // Resource costs chips with icons and Ukrainian labels
+                    if (buildingType.costCopper > 0) CostChip(Resource.COPPER, "${buildingType.costCopper} Мідь")
+                    if (buildingType.costLead > 0) CostChip(Resource.LEAD, "${buildingType.costLead} Свинець")
+                    if (buildingType.costSilver > 0) CostChip(Resource.SILVER, "${buildingType.costSilver} Срібло")
+                    if (buildingType.costIronIngot > 0) CostChip(Resource.IRON_INGOT, "${buildingType.costIronIngot} Злитки")
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
@@ -679,33 +671,237 @@ private fun CompactBuildingInfoCard(
 }
 
 @Composable
-private fun CostChip(text: String, color: Color) {
-    Surface(
-        shape = RoundedCornerShape(4.dp),
-        color = color.copy(alpha = 0.2f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.6f))
-    ) {
-        Text(
-            text = text,
-            color = color,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-        )
+fun ResourceIcon(resource: Resource, modifier: Modifier = Modifier.size(16.dp)) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        when (resource) {
+            Resource.COPPER -> {
+                // Faceted Copper Ore Nugget
+                val path = Path().apply {
+                    moveTo(w * 0.2f, h * 0.38f)
+                    lineTo(w * 0.52f, h * 0.12f)
+                    lineTo(w * 0.88f, h * 0.35f)
+                    lineTo(w * 0.85f, h * 0.78f)
+                    lineTo(w * 0.5f, h * 0.92f)
+                    lineTo(w * 0.15f, h * 0.7f)
+                    close()
+                }
+                drawPath(path, Color(0xFFD97706))
+                val facet1 = Path().apply {
+                    moveTo(w * 0.52f, h * 0.12f)
+                    lineTo(w * 0.88f, h * 0.35f)
+                    lineTo(w * 0.5f, h * 0.55f)
+                    lineTo(w * 0.2f, h * 0.38f)
+                    close()
+                }
+                drawPath(facet1, Color(0xFFFBBF24))
+                drawCircle(Color(0xFFFEF3C7), w * 0.08f, Offset(w * 0.45f, h * 0.3f))
+                drawPath(path, Color(0xFF78350F), style = Stroke(width = 1.2f))
+            }
+            Resource.LEAD -> {
+                // Faceted Dense Lead Ore Crystal
+                val path = Path().apply {
+                    moveTo(w * 0.25f, h * 0.15f)
+                    lineTo(w * 0.75f, h * 0.15f)
+                    lineTo(w * 0.9f, h * 0.55f)
+                    lineTo(w * 0.65f, h * 0.9f)
+                    lineTo(w * 0.15f, h * 0.75f)
+                    lineTo(w * 0.1f, h * 0.35f)
+                    close()
+                }
+                drawPath(path, Color(0xFF6D28D9))
+                val facet = Path().apply {
+                    moveTo(w * 0.25f, h * 0.15f)
+                    lineTo(w * 0.75f, h * 0.15f)
+                    lineTo(w * 0.55f, h * 0.5f)
+                    lineTo(w * 0.1f, h * 0.35f)
+                    close()
+                }
+                drawPath(facet, Color(0xFFA78BFA))
+                drawCircle(Color(0xFFEDE9FE), w * 0.08f, Offset(w * 0.4f, h * 0.3f))
+                drawPath(path, Color(0xFF4C1D95), style = Stroke(width = 1.2f))
+            }
+            Resource.COAL -> {
+                // Jagged Anthracite Coal Lump
+                val path = Path().apply {
+                    moveTo(w * 0.35f, h * 0.14f)
+                    lineTo(w * 0.72f, h * 0.18f)
+                    lineTo(w * 0.92f, h * 0.52f)
+                    lineTo(w * 0.75f, h * 0.88f)
+                    lineTo(w * 0.28f, h * 0.9f)
+                    lineTo(w * 0.1f, h * 0.58f)
+                    close()
+                }
+                drawPath(path, Color(0xFF1E293B))
+                val facet = Path().apply {
+                    moveTo(w * 0.35f, h * 0.14f)
+                    lineTo(w * 0.72f, h * 0.18f)
+                    lineTo(w * 0.5f, h * 0.55f)
+                    lineTo(w * 0.1f, h * 0.58f)
+                    close()
+                }
+                drawPath(facet, Color(0xFF475569))
+                drawPath(path, Color(0xFF0F172A), style = Stroke(width = 1.2f))
+            }
+            Resource.SILVER -> {
+                // Sparkling Silver Crystal
+                val path = Path().apply {
+                    moveTo(w * 0.5f, h * 0.1f)
+                    lineTo(w * 0.88f, h * 0.42f)
+                    lineTo(w * 0.65f, h * 0.9f)
+                    lineTo(w * 0.35f, h * 0.9f)
+                    lineTo(w * 0.12f, h * 0.42f)
+                    close()
+                }
+                drawPath(path, Color(0xFF94A3B8))
+                val facet1 = Path().apply {
+                    moveTo(w * 0.5f, h * 0.1f)
+                    lineTo(w * 0.88f, h * 0.42f)
+                    lineTo(w * 0.5f, h * 0.6f)
+                    close()
+                }
+                drawPath(facet1, Color(0xFFF8FAFC))
+                val facet2 = Path().apply {
+                    moveTo(w * 0.5f, h * 0.1f)
+                    lineTo(w * 0.12f, h * 0.42f)
+                    lineTo(w * 0.5f, h * 0.6f)
+                    close()
+                }
+                drawPath(facet2, Color(0xFFCBD5E1))
+                drawCircle(Color.White, w * 0.08f, Offset(w * 0.5f, h * 0.28f))
+                drawPath(path, Color(0xFF64748B), style = Stroke(width = 1.2f))
+            }
+            Resource.IRON_ORE -> {
+                // Hematite Rusty Iron Ore
+                val path = Path().apply {
+                    moveTo(w * 0.3f, h * 0.16f)
+                    lineTo(w * 0.8f, h * 0.22f)
+                    lineTo(w * 0.92f, h * 0.64f)
+                    lineTo(w * 0.6f, h * 0.9f)
+                    lineTo(w * 0.16f, h * 0.72f)
+                    close()
+                }
+                drawPath(path, Color(0xFF78350F))
+                val facet = Path().apply {
+                    moveTo(w * 0.3f, h * 0.16f)
+                    lineTo(w * 0.8f, h * 0.22f)
+                    lineTo(w * 0.55f, h * 0.55f)
+                    lineTo(w * 0.16f, h * 0.72f)
+                    close()
+                }
+                drawPath(facet, Color(0xFFB45309))
+                drawLine(Color(0xFFEA580C), Offset(w * 0.35f, h * 0.35f), Offset(w * 0.65f, h * 0.55f), strokeWidth = 1.5f)
+                drawPath(path, Color(0xFF451A03), style = Stroke(width = 1.2f))
+            }
+            Resource.IRON_INGOT -> {
+                // 3D Metallic Trapezoidal Ingot / Bar
+                val bottomPath = Path().apply {
+                    moveTo(w * 0.1f, h * 0.68f)
+                    lineTo(w * 0.24f, h * 0.32f)
+                    lineTo(w * 0.76f, h * 0.32f)
+                    lineTo(w * 0.9f, h * 0.68f)
+                    lineTo(w * 0.84f, h * 0.82f)
+                    lineTo(w * 0.16f, h * 0.82f)
+                    close()
+                }
+                drawPath(bottomPath, Color(0xFF475569)) // Shadow base
+                val topPath = Path().apply {
+                    moveTo(w * 0.24f, h * 0.32f)
+                    lineTo(w * 0.76f, h * 0.32f)
+                    lineTo(w * 0.82f, h * 0.54f)
+                    lineTo(w * 0.18f, h * 0.54f)
+                    close()
+                }
+                drawPath(topPath, Color(0xFFE2E8F0)) // High shine top face
+                val frontPath = Path().apply {
+                    moveTo(w * 0.18f, h * 0.54f)
+                    lineTo(w * 0.82f, h * 0.54f)
+                    lineTo(w * 0.88f, h * 0.78f)
+                    lineTo(w * 0.12f, h * 0.78f)
+                    close()
+                }
+                drawPath(frontPath, Color(0xFF94A3B8)) // Beveled front face
+                drawLine(Color.White, Offset(w * 0.26f, h * 0.34f), Offset(w * 0.74f, h * 0.34f), strokeWidth = 1.2f)
+                drawPath(bottomPath, Color(0xFF334155), style = Stroke(width = 1.2f))
+            }
+            Resource.COPPER_AMMO -> {
+                // Pointed Bullet + Brass Shell Casing
+                drawRect(Color(0xFFD97706), Offset(w * 0.32f, h * 0.44f), Size(w * 0.36f, h * 0.44f))
+                val tip = Path().apply {
+                    moveTo(w * 0.32f, h * 0.44f)
+                    lineTo(w * 0.5f, h * 0.12f)
+                    lineTo(w * 0.68f, h * 0.44f)
+                    close()
+                }
+                drawPath(tip, Color(0xFFFB923C))
+                drawRect(Color(0xFFB45309), Offset(w * 0.26f, h * 0.84f), Size(w * 0.48f, h * 0.08f))
+                drawLine(Color(0xFFFED7AA), Offset(w * 0.42f, h * 0.22f), Offset(w * 0.42f, h * 0.82f), strokeWidth = 1.2f)
+            }
+            Resource.SILVER_AMMO -> {
+                // Pointed Armor-Piercing Cyan/Silver Bullet
+                drawRect(Color(0xFF94A3B8), Offset(w * 0.32f, h * 0.44f), Size(w * 0.36f, h * 0.44f))
+                val tip = Path().apply {
+                    moveTo(w * 0.32f, h * 0.44f)
+                    lineTo(w * 0.5f, h * 0.12f)
+                    lineTo(w * 0.68f, h * 0.44f)
+                    close()
+                }
+                drawPath(tip, Color(0xFF38BDF8))
+                drawRect(Color(0xFF64748B), Offset(w * 0.26f, h * 0.84f), Size(w * 0.48f, h * 0.08f))
+                drawLine(Color.White, Offset(w * 0.42f, h * 0.22f), Offset(w * 0.42f, h * 0.82f), strokeWidth = 1.2f)
+            }
+            Resource.SCRAP -> {
+                val path = Path().apply {
+                    moveTo(w * 0.2f, h * 0.2f)
+                    lineTo(w * 0.8f, h * 0.25f)
+                    lineTo(w * 0.75f, h * 0.8f)
+                    lineTo(w * 0.25f, h * 0.75f)
+                    close()
+                }
+                drawPath(path, Color(0xFF64748B))
+                drawCircle(Color(0xFF1E293B), w * 0.15f, Offset(w * 0.5f, h * 0.5f))
+                drawPath(path, Color(0xFF334155), style = Stroke(width = 1.2f))
+            }
+        }
     }
 }
 
 @Composable
-private fun ResourceBadge(label: String, count: Int, color: Color) {
+private fun CostChip(resource: Resource, text: String) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = resource.color.copy(alpha = 0.2f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, resource.color.copy(alpha = 0.6f))
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+        ) {
+            ResourceIcon(resource = resource, modifier = Modifier.size(12.dp))
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResourceBadge(resource: Resource, label: String, count: Int) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(IndustrialDark.copy(alpha = 0.55f))
+            .padding(horizontal = 6.dp, vertical = 3.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .background(color, CircleShape)
-        )
+        ResourceIcon(resource = resource, modifier = Modifier.size(15.dp))
         Text(
             text = "$label: $count",
             color = Color.White,

@@ -89,7 +89,7 @@ fun GameCanvas(
                     val startDownPos = down.position
                     var lastPanPos = down.position
                     var hasDragged = false
-                    var lastTouchedTile: Pair<Int, Int>? = null
+                    var conveyorDragPrevTile: Pair<Int, Int>? = null
                     var demolishDragOrigin: Pair<Int, Int>? = null
 
                     val currentTileSize = baseTileSize * currentZoom
@@ -153,18 +153,34 @@ fun GameCanvas(
                             } else if (currentTool == BuildingType.CONVEYOR) {
                                 val curTileX = floor((currentPos.x - currentCameraOffsetX) / currentTileSize).toInt()
                                 val curTileY = floor((currentPos.y - currentCameraOffsetY) / currentTileSize).toInt()
-                                val currentTile = Pair(curTileX, curTileY)
 
-                                if (currentTile != lastTouchedTile && curTileX in 0 until world.width && curTileY in 0 until world.height) {
-                                    val dragDir = if (lastTouchedTile != null) {
-                                        val dX = curTileX - lastTouchedTile!!.first
-                                        val dY = curTileY - lastTouchedTile!!.second
-                                        Direction.fromDelta(dX, dY)
+                                if (curTileX in 0 until world.width && curTileY in 0 until world.height) {
+                                    if (conveyorDragPrevTile == null) {
+                                        if (curTileX != downTileX || curTileY != downTileY) {
+                                            val dX = curTileX - downTileX
+                                            val dY = curTileY - downTileY
+                                            val dragDir = Direction.fromDelta(dX, dY)
+                                            // 1. Orient the FIRST conveyor in the drag direction!
+                                            if (downTileX in 0 until world.width && downTileY in 0 until world.height) {
+                                                onDragConveyorState(downTileX, downTileY, dragDir)
+                                            }
+                                            // 2. Place the new segment facing the drag direction!
+                                            onDragConveyorState(curTileX, curTileY, dragDir)
+                                            conveyorDragPrevTile = Pair(curTileX, curTileY)
+                                        }
                                     } else {
-                                        conveyorDirection
+                                        val prev = conveyorDragPrevTile!!
+                                        if (curTileX != prev.first || curTileY != prev.second) {
+                                            val dX = curTileX - prev.first
+                                            val dY = curTileY - prev.second
+                                            val dragDir = Direction.fromDelta(dX, dY)
+                                            // Update previous conveyor to turn towards the new segment
+                                            onDragConveyorState(prev.first, prev.second, dragDir)
+                                            // Place new conveyor in the drag direction
+                                            onDragConveyorState(curTileX, curTileY, dragDir)
+                                            conveyorDragPrevTile = Pair(curTileX, curTileY)
+                                        }
                                     }
-                                    onDragConveyorState(curTileX, curTileY, dragDir)
-                                    lastTouchedTile = currentTile
                                 }
                             } else {
                                 // Pan camera
