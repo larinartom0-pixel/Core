@@ -1,10 +1,10 @@
 package com.example.model
 
-enum class Direction(val dx: Int, val dy: Int, val angleDegrees: Float) {
-    NORTH(0, -1, 0f),
-    EAST(1, 0, 90f),
-    SOUTH(0, 1, 180f),
-    WEST(-1, 0, 270f);
+enum class Direction(val dx: Int, val dy: Int, val angleDegrees: Float, val displayName: String) {
+    NORTH(0, -1, 0f, "Північ ↑"),
+    EAST(1, 0, 90f, "Схід →"),
+    SOUTH(0, 1, 180f, "Південь ↓"),
+    WEST(-1, 0, 270f, "Захід ←");
 
     fun next(): Direction = when (this) {
         NORTH -> EAST

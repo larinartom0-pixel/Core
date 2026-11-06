@@ -73,6 +73,9 @@ fun GameHud(
     onCenterOnCore: () -> Unit,
     onZoomIn: () -> Unit = {},
     onZoomOut: () -> Unit = {},
+    inspectedBuildingId: String? = null,
+    onDismissInspector: () -> Unit = {},
+    onSetBuildingRecipe: (String, String) -> Unit = { _, _ -> },
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -212,13 +215,26 @@ fun GameHud(
                     }
                 }
             }
+
+            // Technical Inspector Card when a building is tapped/selected
+            val inspectedBuilding = world.buildings.firstOrNull { it.id == inspectedBuildingId }
+            if (inspectedBuilding != null) {
+                TechnicalInspectorCard(
+                    building = inspectedBuilding,
+                    onClose = onDismissInspector,
+                    onSetRecipe = { newRecipe -> onSetBuildingRecipe(inspectedBuilding.id, newRecipe) }
+                )
+            }
         }
 
         // --- MINI-MAP (Top-Right Corner) ---
+        val inspectedBuilding = world.buildings.firstOrNull { it.id == inspectedBuildingId }
+        val miniMapTopPadding = if (inspectedBuilding != null) 215.dp else 80.dp
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 80.dp, end = 8.dp)
+                .padding(top = miniMapTopPadding, end = 8.dp)
         ) {
             MiniMap(
                 world = world,
@@ -892,7 +908,7 @@ private fun CostChip(resource: Resource, text: String) {
 }
 
 @Composable
-private fun ResourceBadge(resource: Resource, label: String, count: Int) {
+private fun ResourceBadge(resource: Resource, label: String, count: Int, maxCapacity: Int? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -903,11 +919,401 @@ private fun ResourceBadge(resource: Resource, label: String, count: Int) {
     ) {
         ResourceIcon(resource = resource, modifier = Modifier.size(15.dp))
         Text(
-            text = "$label: $count",
+            text = if (maxCapacity != null) "$label: $count/$maxCapacity" else "$label: $count",
             color = Color.White,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+private fun TechnicalInspectorCard(
+    building: BuildingInstance,
+    onClose: () -> Unit,
+    onSetRecipe: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = IndustrialSurface.copy(alpha = 0.96f),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, CoreCyan.copy(alpha = 0.8f)),
+        shadowElevation = 8.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 560.dp)
+            .testTag("technical_inspector_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Header: Icon, Name, Type, Coordinates, Close Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(CoreCyan.copy(alpha = 0.2f))
+                            .border(1.dp, CoreCyan, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = when (building.type.category) {
+                                BuildingCategory.POWER -> Icons.Default.Bolt
+                                BuildingCategory.DEFENSE -> Icons.Default.Shield
+                                BuildingCategory.INDUSTRY -> Icons.Default.PrecisionManufacturing
+                                BuildingCategory.MINING -> Icons.Default.Build
+                                BuildingCategory.LOGISTICS -> Icons.Default.Engineering
+                            },
+                            contentDescription = null,
+                            tint = CoreCyan,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = building.type.displayName,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${building.type.category.displayName} • Позиція: [${building.originX}, ${building.originY}]",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(IndustrialDark.copy(alpha = 0.6f), CircleShape)
+                        .testTag("btn_close_inspector")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрити",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // HP and Power Status Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // HP Bar
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(IndustrialDark)
+                        .border(0.5.dp, IndustrialBorder, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(building.healthRatio)
+                            .background(
+                                if (building.healthRatio > 0.5f) Color(0xFF10B981)
+                                else if (building.healthRatio > 0.25f) Color(0xFFF59E0B)
+                                else Color(0xFFEF4444)
+                            )
+                    )
+                    Text(
+                        text = "❤ ${building.health} / ${building.type.maxHealth} HP",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+
+                // Power indicator badge
+                when (building.type) {
+                    BuildingType.COAL_GENERATOR -> {
+                        val hasCoal = (building.storedResources[Resource.COAL] ?: 0) > 0
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (hasCoal) Color(0x3310B981) else Color(0x33EF4444),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (hasCoal) Color(0xFF10B981) else Color(0xFFEF4444))
+                        ) {
+                            Text(
+                                text = if (hasCoal) "⚡ Генерує 20/с" else "⚠ Немає вугілля",
+                                color = if (hasCoal) Color(0xFF34D399) else Color(0xFFF87171),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    BuildingType.BATTERY -> {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0x3338BDF8),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8))
+                        ) {
+                            Text(
+                                text = "⚡ ${(building.energyStored).toInt()} / 200",
+                                color = Color(0xFF38BDF8),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    BuildingType.POWER_NODE -> {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0x33FDE047),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE047))
+                        ) {
+                            Text(
+                                text = "⚡ Радіус 5 кл.",
+                                color = Color(0xFFFDE047),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    BuildingType.IRON_SMELTER -> {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (building.isPowered) Color(0x3310B981) else Color(0x33EF4444),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (building.isPowered) Color(0xFF10B981) else Color(0xFFEF4444))
+                        ) {
+                            Text(
+                                text = if (building.isPowered) "⚡ Живиться (3/с)" else "⚠ Немає струму",
+                                color = if (building.isPowered) Color(0xFF34D399) else Color(0xFFF87171),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    BuildingType.AMMO_FABRICATOR -> {
+                        val reqPower = if (building.fabricatorRecipe == "silver") 5 else 3
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (building.isPowered) Color(0x3310B981) else Color(0x33EF4444),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (building.isPowered) Color(0xFF10B981) else Color(0xFFEF4444))
+                        ) {
+                            Text(
+                                text = if (building.isPowered) "⚡ Живиться (${reqPower}/с)" else "⚠ Немає струму",
+                                color = if (building.isPowered) Color(0xFF34D399) else Color(0xFFF87171),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+            }
+
+            // Internal Storage / Inventory
+            when (building.type) {
+                BuildingType.COAL_GENERATOR -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Паливо:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        ResourceBadge(Resource.COAL, "Вугілля", building.storedResources[Resource.COAL] ?: 0, maxCapacity = 25)
+                    }
+                }
+                BuildingType.IRON_SMELTER -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Сховище сировини та виходу:", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item { ResourceBadge(Resource.IRON_ORE, "Залізна руда", building.storedResources[Resource.IRON_ORE] ?: 0, maxCapacity = 25) }
+                            item { ResourceBadge(Resource.COAL, "Вугілля", building.storedResources[Resource.COAL] ?: 0, maxCapacity = 20) }
+                            item { ResourceBadge(Resource.IRON_INGOT, "Готові злитки", building.storedResources[Resource.IRON_INGOT] ?: 0, maxCapacity = 20) }
+                        }
+                    }
+                }
+                BuildingType.AMMO_FABRICATOR -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Ресурси в буфері:", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item { ResourceBadge(Resource.COPPER, "Мідь", building.storedResources[Resource.COPPER] ?: 0, maxCapacity = 25) }
+                            item { ResourceBadge(Resource.LEAD, "Свинець", building.storedResources[Resource.LEAD] ?: 0, maxCapacity = 25) }
+                            item { ResourceBadge(Resource.COAL, "Вугілля", building.storedResources[Resource.COAL] ?: 0, maxCapacity = 25) }
+                            item { ResourceBadge(Resource.SILVER, "Срібло", building.storedResources[Resource.SILVER] ?: 0, maxCapacity = 25) }
+                            item { ResourceBadge(Resource.COPPER_AMMO, "Мідні набої", building.storedResources[Resource.COPPER_AMMO] ?: 0, maxCapacity = 30) }
+                            item { ResourceBadge(Resource.SILVER_AMMO, "Срібні набої", building.storedResources[Resource.SILVER_AMMO] ?: 0, maxCapacity = 30) }
+                        }
+                    }
+                }
+                BuildingType.TURRET -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Боєзапас:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        if (building.turretAmmoType != null && building.turretAmmoCount > 0) {
+                            ResourceBadge(building.turretAmmoType!!, building.turretAmmoType!!.displayName, building.turretAmmoCount, maxCapacity = 30)
+                        } else {
+                            Text("Порожньо (підведіть мідні або срібні набої)", color = Color(0xFFF59E0B), fontSize = 10.sp)
+                        }
+                    }
+                }
+                else -> {}
+            }
+
+            // Recipe / Behavior / Progress
+            when (building.type) {
+                BuildingType.IRON_SMELTER -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            text = "Рецепт: 3 Залізна руда + 1 Вугілля + 3⚡ → 1 Залізний злиток",
+                            color = Color(0xFFE2E8F0),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(IndustrialDark)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth((building.craftTimer / 1.0f).coerceIn(0f, 1f))
+                                    .background(Color(0xFF38BDF8))
+                            )
+                        }
+                    }
+                }
+                BuildingType.AMMO_FABRICATOR -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Рецепт виробництва:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val isCopper = building.fabricatorRecipe == "copper"
+                            val isSilver = building.fabricatorRecipe == "silver"
+
+                            Button(
+                                onClick = { onSetRecipe("copper") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isCopper) CopperAmber else IndustrialDark,
+                                    contentColor = if (isCopper) Color.Black else Color.White
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Text(
+                                    text = if (isCopper) "✓ Мідні набої" else "Мідні набої",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Button(
+                                onClick = { onSetRecipe("silver") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSilver) SilverGray else IndustrialDark,
+                                    contentColor = if (isSilver) Color.Black else Color.White
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Text(
+                                    text = if (isSilver) "✓ Срібні набої" else "Срібні набої",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        val recipeText = if (building.fabricatorRecipe == "silver") {
+                            "Вимоги: 3 Срібло + 2 Свинець + 2 Вугілля + 5⚡ → 1 Срібний набій (24 урону)"
+                        } else {
+                            "Вимоги: 3 Мідь + 1 Свинець + 2 Вугілля + 3⚡ → 1 Мідний набій (10 урону)"
+                        }
+                        Text(recipeText, color = Color(0xFFCBD5E1), fontSize = 10.sp)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(IndustrialDark)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth((building.craftTimer / 1.2f).coerceIn(0f, 1f))
+                                    .background(if (building.fabricatorRecipe == "silver") SilverGray else CopperAmber)
+                            )
+                        }
+                    }
+                }
+                BuildingType.TURRET -> {
+                    Text(
+                        text = "Параметри: Радіус 6.5 кл. • Скорострільність: 4.5 вистрілів/с\nМідні набої: 10 урону • Срібні набої: 24 урону",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                BuildingType.CONVEYOR -> {
+                    Text(
+                        text = "Напрямок: ${building.direction.displayName} • Швидкість: 2.4 клітинки/сек",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                BuildingType.ROUTER -> {
+                    Text(
+                        text = "Рівномірно розподіляє ресурси між усіма підключеними конвеєрами, генераторами або заводами.",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                BuildingType.JUNCTION -> {
+                    Text(
+                        text = "Пропускає перпендикулярні конвеєрні потоки без змішування ресурсів.",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                BuildingType.COPPER_DRILL -> {
+                    Text(
+                        text = "Видобуває корисні копалини під собою (1.2 руди/сек на повній жилі).",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                BuildingType.CORE -> {
+                    Text(
+                        text = "Головне Ядро. Зберігає всі ресурси бази та керує будівельним дроном.",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+                else -> {}
+            }
+        }
     }
 }
 

@@ -18,3 +18,4 @@ val AlertRed = Color(0xFFEF4444)
 
 val SlateLight = Color(0xFFE2E8F0)
 val SlateDim = Color(0xFF94A3B8)
+val SilverGray = Color(0xFF94A3B8)

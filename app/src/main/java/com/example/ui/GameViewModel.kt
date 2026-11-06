@@ -88,6 +88,10 @@ class GameViewModel : ViewModel() {
     private val _isDemolishMode = MutableStateFlow(false)
     val isDemolishMode = _isDemolishMode.asStateFlow()
 
+    // Building Technical Inspector
+    private val _inspectedBuildingId = MutableStateFlow<String?>(null)
+    val inspectedBuildingId = _inspectedBuildingId.asStateFlow()
+
     var demolishDragStart by mutableStateOf<Pair<Int, Int>?>(null)
     var demolishDragCurrent by mutableStateOf<Pair<Int, Int>?>(null)
 
@@ -229,6 +233,7 @@ class GameViewModel : ViewModel() {
     fun selectCategory(category: BuildingCategory) {
         _selectedCategory.value = category
         _isDemolishMode.value = false
+        _inspectedBuildingId.value = null
     }
 
     fun selectTool(tool: BuildingType?) {
@@ -236,7 +241,20 @@ class GameViewModel : ViewModel() {
         if (tool != null) {
             _isDemolishMode.value = false
             _selectedCategory.value = tool.category
+            _inspectedBuildingId.value = null
         }
+    }
+
+    fun dismissInspector() {
+        _inspectedBuildingId.value = null
+    }
+
+    fun setBuildingRecipe(buildingId: String, recipe: String) {
+        val b = _world.buildings.firstOrNull { it.id == buildingId }
+        if (b != null) {
+            b.fabricatorRecipe = recipe
+        }
+        _fabricatorRecipe.value = recipe
     }
 
     fun setFabricatorRecipe(recipe: String) {
@@ -252,6 +270,7 @@ class GameViewModel : ViewModel() {
         _isDemolishMode.value = !_isDemolishMode.value
         if (_isDemolishMode.value) {
             _selectedTool.value = null
+            _inspectedBuildingId.value = null
         }
     }
 
@@ -265,7 +284,14 @@ class GameViewModel : ViewModel() {
             syncHudState()
             return
         }
-        val tool = _selectedTool.value ?: return
+        val tool = _selectedTool.value
+        if (tool == null) {
+            // No tool selected: inspect building or dismiss if tapping empty terrain
+            val b = _world.getBuildingAt(tileX, tileY)
+            _inspectedBuildingId.value = b?.id
+            return
+        }
+        _inspectedBuildingId.value = null
         _world.toggleBlueprint(tileX, tileY, tool, _conveyorDirection.value)
         syncHudState()
     }

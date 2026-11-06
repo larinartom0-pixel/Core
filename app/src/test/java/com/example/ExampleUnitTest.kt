@@ -50,7 +50,7 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun testAutoJunctionConversion() {
+    fun testPreserveExistingBuildingOnConveyorDrag() {
         val world = GameWorld(80, 80)
         val x = 40
         val y = 45
@@ -66,10 +66,11 @@ class ExampleUnitTest {
         // Drag a horizontal conveyor crossing this tile
         world.addConveyorAt(x, y, Direction.EAST)
 
-        // Should automatically convert existing conveyor into a Junction blueprint
-        val junctionBp = world.blueprints.firstOrNull { it.originX == x && it.originY == y }
-        assertNotNull("Should create a junction blueprint at intersection", junctionBp)
-        assertEquals(BuildingType.JUNCTION, junctionBp!!.type)
+        // Built building must remain intact and NOT be deleted
+        val stillExists = world.buildings.firstOrNull { it.originX == x && it.originY == y }
+        assertNotNull("Existing building must be preserved", stillExists)
+        assertEquals(BuildingType.CONVEYOR, stillExists!!.type)
+        assertEquals(Direction.SOUTH, stillExists.direction)
     }
 
     @Test
@@ -238,5 +239,87 @@ class ExampleUnitTest {
         assertNotNull("Second conveyor blueprint should exist", secondBp)
         assertEquals(Direction.EAST, firstBp!!.direction)
         assertEquals(Direction.EAST, secondBp!!.direction)
+    }
+
+    @Test
+    fun testRouterFeedsCoalGenerator() {
+        val world = GameWorld(80, 80)
+        val rx = 30
+        val ry = 30
+        world.grid[rx][ry] = Tile(rx, ry, TileType.DIRT)
+        world.grid[rx + 1][ry] = Tile(rx + 1, ry, TileType.DIRT)
+
+        // Place Router at (30, 30) and Coal Generator at (31, 30)
+        world.toggleBlueprint(rx, ry, BuildingType.ROUTER, Direction.NORTH)
+        world.toggleBlueprint(rx + 1, ry, BuildingType.COAL_GENERATOR, Direction.NORTH)
+        world.confirmBlueprints()
+
+        for (b in world.buildings) {
+            b.buildProgress = 1.0f
+        }
+        world.constructionQueue.clear()
+
+        val gen = world.buildings.first { it.type == BuildingType.COAL_GENERATOR }
+        assertEquals(0, gen.storedResources[Resource.COAL] ?: 0)
+
+        // Inject coal item inside the router
+        world.items.add(
+            TransportedItem(
+                id = "item_coal_test",
+                resource = Resource.COAL,
+                tileX = rx,
+                tileY = ry,
+                progress = 0.95f,
+                direction = Direction.EAST
+            )
+        )
+
+        // Update world logistics
+        for (i in 0 until 5) {
+            world.update(0.05f)
+        }
+
+        // Router should have delivered the coal item directly into the adjacent generator
+        assertEquals(1, gen.storedResources[Resource.COAL] ?: 0)
+        assertEquals(0, world.items.size)
+    }
+
+    @Test
+    fun testSmelterInternalBufferingWithoutConveyor() {
+        val world = GameWorld(80, 80)
+        val sx = 30
+        val sy = 30
+        for (x in (sx - 2)..(sx + 3)) {
+            for (y in (sy - 2)..(sy + 3)) {
+                world.grid[x][y] = Tile(x, y, TileType.DIRT)
+            }
+        }
+
+        // Place powered generator and standalone Iron Smelter without output conveyor
+        world.toggleBlueprint(sx - 2, sy, BuildingType.COAL_GENERATOR, Direction.NORTH)
+        world.toggleBlueprint(sx, sy, BuildingType.IRON_SMELTER, Direction.NORTH)
+        world.confirmBlueprints()
+
+        for (b in world.buildings) {
+            b.buildProgress = 1.0f
+        }
+        world.constructionQueue.clear()
+
+        val gen = world.buildings.first { it.type == BuildingType.COAL_GENERATOR }
+        gen.storedResources[Resource.COAL] = 20
+
+        val smelter = world.buildings.first { it.type == BuildingType.IRON_SMELTER }
+        smelter.storedResources[Resource.IRON_ORE] = 3
+        smelter.storedResources[Resource.COAL] = 1
+
+        // Run simulation for 1.2s (cycle = 1.0s)
+        for (i in 0 until 24) {
+            world.update(0.05f)
+        }
+
+        // Smelter should have crafted into its internal buffer even without any output conveyor!
+        assertEquals(1, smelter.storedResources[Resource.IRON_INGOT] ?: 0)
+        assertEquals(0, smelter.storedResources[Resource.IRON_ORE] ?: 0)
+        assertEquals(0, smelter.storedResources[Resource.COAL] ?: 0)
     }
 }

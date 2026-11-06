@@ -44,6 +44,7 @@ fun GameScreen(
     val showGrid by viewModel.showGrid.collectAsStateWithLifecycle()
     val showFlowArrows by viewModel.showFlowArrows.collectAsStateWithLifecycle()
     val soundEnabled by viewModel.soundEnabled.collectAsStateWithLifecycle()
+    val inspectedBuildingId by viewModel.inspectedBuildingId.collectAsStateWithLifecycle()
 
     var screenWidth by remember { mutableFloatStateOf(1080f) }
     var screenHeight by remember { mutableFloatStateOf(2160f) }
@@ -75,6 +76,7 @@ fun GameScreen(
             demolishDragStart = viewModel.demolishDragStart,
             demolishDragCurrent = viewModel.demolishDragCurrent,
             conveyorDirection = conveyorDirection,
+            inspectedBuildingId = inspectedBuildingId,
             onTapTile = { x, y -> viewModel.onTapTile(x, y) },
             onDragConveyorSegment = { x, y, dir -> viewModel.onDragConveyorSegment(x, y, dir) },
             onPanCamera = { dx, dy -> viewModel.onPanCamera(dx, dy) },
@@ -126,6 +128,9 @@ fun GameScreen(
             onCenterOnCore = { viewModel.centerOnCore(screenWidth, screenHeight) },
             onZoomIn = { viewModel.onZoomIn(screenWidth, screenHeight) },
             onZoomOut = { viewModel.onZoomOut(screenWidth, screenHeight) },
+            inspectedBuildingId = inspectedBuildingId,
+            onDismissInspector = { viewModel.dismissInspector() },
+            onSetBuildingRecipe = { bId, rec -> viewModel.setBuildingRecipe(bId, rec) },
             onOpenSettings = { showInGameSettings = true }
         )
 

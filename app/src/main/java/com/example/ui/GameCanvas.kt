@@ -37,6 +37,7 @@ fun GameCanvas(
     demolishDragStart: Pair<Int, Int>?,
     demolishDragCurrent: Pair<Int, Int>?,
     conveyorDirection: Direction,
+    inspectedBuildingId: String? = null,
     onTapTile: (Int, Int) -> Unit,
     onDragConveyorSegment: (Int, Int, Direction) -> Unit,
     onPanCamera: (Float, Float) -> Unit,
@@ -344,6 +345,21 @@ fun GameCanvas(
                         color = Color(0xFFEF4444)
                     )
                 }
+            }
+
+            // Inspected building highlight frame
+            if (b.id == inspectedBuildingId) {
+                drawRect(
+                    color = Color(0x3338BDF8),
+                    topLeft = Offset(screenX - 2f * zoom, screenY - 2f * zoom),
+                    size = Size(bWidthPx + 4f * zoom, bHeightPx + 4f * zoom)
+                )
+                drawRect(
+                    color = Color(0xFF38BDF8),
+                    topLeft = Offset(screenX - 2f * zoom, screenY - 2f * zoom),
+                    size = Size(bWidthPx + 4f * zoom, bHeightPx + 4f * zoom),
+                    style = Stroke(width = 2.5f * zoom)
+                )
             }
         }
 
